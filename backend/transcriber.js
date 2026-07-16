@@ -97,11 +97,13 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
       matchFilter = `duration > ${minDur} & duration < ${maxDur}`;
     }
 
-    let cookieArgs = [];
+    let extraArgs = [];
     if (process.env.YOUTUBE_COOKIES) {
       const cookiePath = path.join(tmpDir, 'youtube_cookies.txt');
       fs.writeFileSync(cookiePath, process.env.YOUTUBE_COOKIES);
-      cookieArgs = ['--cookies', cookiePath];
+      extraArgs = ['--cookies', cookiePath];
+    } else {
+      extraArgs = ['--extractor-args', 'youtube:player_client=ios'];
     }
 
     for (const provider of searchProviders) {
@@ -111,7 +113,7 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
           '-f', 'bestaudio',
           '--max-filesize', '24M',
           '--match-filter', matchFilter,
-          ...cookieArgs,
+          ...extraArgs,
           '-o', outputTemplate,
           provider
         ]);

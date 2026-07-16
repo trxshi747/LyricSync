@@ -111,6 +111,7 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
           '-f', 'ba[ext=m4a]/ba/best',
           '--max-filesize', '24M',
           '--match-filter', matchFilter,
+          '--js-runtimes', 'node',
           ...extraArgs,
           '-o', outputTemplate,
           provider

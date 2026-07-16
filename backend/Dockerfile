@@ -1,4 +1,4 @@
-FROM node:18-bullseye-slim
+FROM node:18-bookworm-slim
 
 # Install ffmpeg, python3, and latest yt-dlp from master to fix SABR streaming issues
 RUN apt-get update && \

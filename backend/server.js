@@ -22,7 +22,7 @@ async function runBackgroundAiJob(trackId, trackName, artistName, durationSecond
   console.log(`[Job ${trackId}] Started background AI Transcription for ${trackName}...`);
   
   try {
-    const generatedLrc = await getTranscribedLyrics(`${trackName} ${artistName} Topic`, durationSeconds, geniusLyrics);
+    const generatedLrc = await getTranscribedLyrics(`${trackName} ${artistName}`, durationSeconds, geniusLyrics);
     if (generatedLrc) {
       aiJobs.set(trackId, { status: 'completed', lyrics: generatedLrc });
       console.log(`[Job ${trackId}] Successfully completed.`);

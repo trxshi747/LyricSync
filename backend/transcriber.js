@@ -97,7 +97,7 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
       matchFilter = `duration > ${minDur} & duration < ${maxDur}`;
     }
 
-    let extraArgs = ['--extractor-args', 'youtube:player_client=android'];
+    let extraArgs = [];
     if (process.env.YOUTUBE_COOKIES) {
       const cookiePath = path.join(tmpDir, 'youtube_cookies.txt');
       fs.writeFileSync(cookiePath, process.env.YOUTUBE_COOKIES);

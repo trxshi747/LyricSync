@@ -1,9 +1,9 @@
 FROM node:18-bullseye-slim
 
-# Install ffmpeg, python3, and yt-dlp via pip
+# Install ffmpeg, python3, and latest yt-dlp from master to fix SABR streaming issues
 RUN apt-get update && \
     apt-get install -y ffmpeg python3 python3-pip && \
-    pip3 install -U yt-dlp && \
+    pip3 install -U https://github.com/yt-dlp/yt-dlp/archive/master.zip && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

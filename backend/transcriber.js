@@ -97,6 +97,13 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
       matchFilter = `duration > ${minDur} & duration < ${maxDur}`;
     }
 
+    let cookieArgs = [];
+    if (process.env.YOUTUBE_COOKIES) {
+      const cookiePath = path.join(tmpDir, 'youtube_cookies.txt');
+      fs.writeFileSync(cookiePath, process.env.YOUTUBE_COOKIES);
+      cookieArgs = ['--cookies', cookiePath];
+    }
+
     for (const provider of searchProviders) {
       console.log(`Attempting native download via: ${provider} (Target length: ${durationSeconds}s)`);
       try {
@@ -104,7 +111,7 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
           '-f', 'bestaudio',
           '--max-filesize', '24M',
           '--match-filter', matchFilter,
-          '--extractor-args', 'youtube:player_client=ios',
+          ...cookieArgs,
           '-o', outputTemplate,
           provider
         ]);

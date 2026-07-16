@@ -116,6 +116,7 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
           break; // Break the loop on success
         }
       } catch (err) {
+        console.error(`yt-dlp crash for ${provider}:`, err.message || err);
         console.log(`Download failed for ${provider}. Trying next...`);
       }
     }

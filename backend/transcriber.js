@@ -81,10 +81,10 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
     
     // Pass the exact string directly. execFile safely handles all unicode without shell crashes.
     const searchProviders = [
-      `ytsearch1:${searchQuery}`, // 1st YouTube result
-      `ytsearch2:${searchQuery}`, // 2nd YouTube result (often Topic/Audio, bypasses age gates)
-      `ytsearch3:${searchQuery}`, // 3rd YouTube result
-      `scsearch1:${searchQuery}`  // SoundCloud fallback
+      `ytmsearch1:${searchQuery}`, // YouTube Music often has looser bot checks
+      `ytsearch1:${searchQuery}`, 
+      `ytsearch2:${searchQuery}`, 
+      `scsearch1:${searchQuery}`
     ];
 
     let matchFilter = 'duration < 600';
@@ -102,6 +102,7 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
           '-f', 'bestaudio',
           '--max-filesize', '24M',
           '--match-filter', matchFilter,
+          '--extractor-args', 'youtube:player_client=android,web',
           '-o', outputTemplate,
           provider
         ]);

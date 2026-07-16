@@ -98,7 +98,10 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
     }
 
     let extraArgs = [];
-    if (process.env.YOUTUBE_COOKIES) {
+    const localCookiePath = path.join(__dirname, 'youtube_cookies.txt');
+    if (fs.existsSync(localCookiePath)) {
+      extraArgs.push('--cookies', localCookiePath);
+    } else if (process.env.YOUTUBE_COOKIES) {
       const cookiePath = path.join(tmpDir, 'youtube_cookies.txt');
       fs.writeFileSync(cookiePath, process.env.YOUTUBE_COOKIES);
       extraArgs.push('--cookies', cookiePath);

@@ -83,9 +83,10 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
     const searchProviders = [
       `ytsearch1:${searchQuery} Topic`, 
       `ytsearch1:${searchQuery} audio`, 
+      `ytsearch1:${searchQuery} official audio`, 
+      `ytsearch1:${searchQuery} lyrics`, 
       `ytsearch2:${searchQuery}`, 
-      `scsearch1:${searchQuery}`,
-      `scsearch2:${searchQuery}`
+      `scsearch1:${searchQuery}`
     ];
 
     let matchFilter = 'duration < 600';
@@ -103,7 +104,7 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
           '-f', 'bestaudio',
           '--max-filesize', '24M',
           '--match-filter', matchFilter,
-          '--extractor-args', 'youtube:player_client=android,web',
+          '--extractor-args', 'youtube:player_client=ios',
           '-o', outputTemplate,
           provider
         ]);

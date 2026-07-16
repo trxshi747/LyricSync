@@ -74,7 +74,7 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
         }
     }
 
-    const ytdlpPath = path.join(__dirname, 'yt-dlp.exe');
+    const ytdlpPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
     const outputTemplate = path.join(tmpDir, `audio_${timestamp}.%(ext)s`);
     
     let actualFilePath = null;

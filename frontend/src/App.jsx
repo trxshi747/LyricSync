@@ -185,7 +185,7 @@ function App() {
                 <div className="feature-card">
                   <Sparkles className="feature-icon" size={24} />
                   <div className="feature-text">
-                    <h3>Apple Music Style</h3>
+                    <h3>Immersive Design</h3>
                     <p>Beautiful, fluid animations and typography.</p>
                   </div>
                 </div>

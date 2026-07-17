@@ -9,7 +9,7 @@ const FormData = require('form-data');
 // Helper to convert Whisper verbose_json segments to LRC format
 function verboseJsonToLrc(segments) {
   let lrcContent = '';
-  
+
   if (!segments || !Array.isArray(segments)) return lrcContent;
 
   for (const segment of segments) {
@@ -18,13 +18,13 @@ function verboseJsonToLrc(segments) {
     const seconds = (startSecs % 60).toFixed(2).padStart(5, '0'); // e.g., '04.52'
     const text = segment.text || '';
     const lrcTime = `[${minutes.toString().padStart(2, '0')}:${seconds}]`;
-    
+
     const hasMusicEmojis = /[🎵♪🎶]/.test(text);
     let cleanText = text.replace(/[🎵♪🎶]/g, '').trim();
     const textLower = cleanText.toLowerCase();
-    
+
     // Filter out common Whisper AI hallucinations during silent/instrumental sections
-    const isHallucination = 
+    const isHallucination =
       textLower.includes("subtitles by") ||
       textLower.includes("субтитры") || // Russian for subtitles
       textLower.includes("dimatorzok") ||
@@ -57,33 +57,36 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
     // Groq accepts flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm
     const timestamp = Date.now();
     const tmpDir = path.join(__dirname, '..', '.tmp');
-    if (!fs.existsSync(tmpDir)){
-        fs.mkdirSync(tmpDir, { recursive: true });
+    if (!fs.existsSync(tmpDir)) {
+      fs.mkdirSync(tmpDir, { recursive: true });
     } else {
-        // Cleanup: If there are 5 or more files left over from crashes, delete them to save space
-        const existingFiles = fs.readdirSync(tmpDir);
-        if (existingFiles.length >= 5) {
-            console.log(`Cleaning up ${existingFiles.length} old files in .tmp directory...`);
-            for (const file of existingFiles) {
-                try {
-                    fs.unlinkSync(path.join(tmpDir, file));
-                } catch (e) {
-                    // Ignore if file is locked
-                }
-            }
+      // Cleanup: If there are 5 or more files left over from crashes, delete them to save space
+      const existingFiles = fs.readdirSync(tmpDir);
+      if (existingFiles.length >= 5) {
+        console.log(`Cleaning up ${existingFiles.length} old files in .tmp directory...`);
+        for (const file of existingFiles) {
+          try {
+            fs.unlinkSync(path.join(tmpDir, file));
+          } catch (e) {
+            // Ignore if file is locked
+          }
         }
+      }
     }
 
     const ytdlpPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
     const outputTemplate = path.join(tmpDir, `audio_${timestamp}.%(ext)s`);
-    
+
     let actualFilePath = null;
-    
+
     // Pass the exact string directly. execFile safely handles all unicode without shell crashes.
     const searchProviders = [
-      `ytsearch3:${searchQuery} Topic`, 
-      `ytsearch5:${searchQuery}`, 
-      `scsearch3:${searchQuery}`
+      `ytsearch1:${searchQuery} Topic`,
+      `ytsearch1:${searchQuery} audio`,
+      `ytsearch1:${searchQuery} official audio`,
+      `ytsearch1:${searchQuery} lyrics`,
+      `ytsearch2:${searchQuery}`,
+      `scsearch1:${searchQuery}`
     ];
 
     let matchFilter = 'duration < 600';
@@ -118,19 +121,17 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
       console.log(`Attempting native download via: ${provider} (Target length: ${durationSeconds}s)`);
       try {
         const { stdout, stderr } = await execFilePromise(ytdlpPath, [
-          '-f', 'wa[ext=m4a]/wa/worstaudio/worst',
+          '-f', 'ba[ext=m4a]/ba/best',
           '--max-filesize', '24M',
           '--match-filter', matchFilter,
           '--remote-components', 'ejs:github',
-          '--no-playlist',
-          '--concurrent-fragments', '4',
           ...extraArgs,
           '-o', outputTemplate,
           provider
         ]);
         console.log(`yt-dlp stdout:`, stdout);
         if (stderr) console.log(`yt-dlp stderr:`, stderr);
-        
+
         const files = fs.readdirSync(tmpDir);
         const downloadedFileName = files.find(f => f.startsWith(`audio_${timestamp}.`));
         if (downloadedFileName) {
@@ -143,7 +144,7 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
         console.log(`Download failed for ${provider}. Trying next...`);
       }
     }
-    
+
     if (!actualFilePath) {
       throw new Error("Downloaded audio file not found in .tmp directory. All search providers failed.");
     }
@@ -170,17 +171,17 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
     });
 
     const jsonData = response.data;
-    
+
     // Always cleanup the current tmp file if it exists
     if (actualFilePath && fs.existsSync(actualFilePath)) {
       try {
         fs.unlinkSync(actualFilePath);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     console.log(`Received verbose_json from Groq, converting to LRC...`);
     const lrc = verboseJsonToLrc(jsonData.segments);
-    
+
     return lrc;
   } catch (error) {
     console.error('Error in getTranscribedLyrics:', error.response?.data || error);

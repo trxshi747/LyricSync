@@ -185,8 +185,8 @@ function App() {
                 <div className="feature-card">
                   <Sparkles className="feature-icon" size={24} />
                   <div className="feature-text">
-                    <h3>Immersive Design</h3>
-                    <p>Beautiful, fluid animations and typography.</p>
+                    <h3>Real-Time Sync</h3>
+                    <p>Perfectly timed lyrics synced directly to your Spotify playback.</p>
                   </div>
                 </div>
                 <div className="feature-card">

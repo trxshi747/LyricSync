@@ -12,6 +12,7 @@ function App() {
   const [unsyncedLyrics, setUnsyncedLyrics] = useState(null);
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
   const [isAiFallback, setIsAiFallback] = useState(false);
+  const [authError, setAuthError] = useState(null);
   const [progressMs, setProgressMs] = useState(0);
   const pollIntervalRef = useRef(null);
 
@@ -61,6 +62,9 @@ function App() {
           }
         }
       } catch (error) {
+        if (error.response && error.response.status === 403) {
+          setAuthError("Spotify Premium is required to sync lyrics. Free accounts are blocked by Spotify.");
+        }
         console.error('Error fetching current track:', error);
       }
     };
@@ -229,7 +233,12 @@ function App() {
         ) : (
           <main className="main-display">
             <div className="track-info">
-              {currentTrack ? (
+              {authError ? (
+                <div className="track-details">
+                  <div className="track-name" style={{ color: '#ff5f56', fontSize: '2rem' }}>Premium Required</div>
+                  <div className="track-artist">{authError}</div>
+                </div>
+              ) : currentTrack ? (
                 <>
                   <img 
                     src={currentTrack.image_url} 

@@ -122,6 +122,9 @@ app.get('/api/current-track', async (req, res) => {
     });
   } catch (error) {
     console.error('Error getting current track:', error);
+    if (error.statusCode === 403) {
+      return res.status(403).json({ error: 'Premium required' });
+    }
     res.status(500).json({ error: 'Failed to fetch current track' });
   }
 });

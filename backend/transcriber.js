@@ -81,12 +81,9 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
     
     // Pass the exact string directly. execFile safely handles all unicode without shell crashes.
     const searchProviders = [
-      `ytsearch1:${searchQuery} Topic`, 
-      `ytsearch1:${searchQuery} audio`, 
-      `ytsearch1:${searchQuery} official audio`, 
-      `ytsearch1:${searchQuery} lyrics`, 
-      `ytsearch2:${searchQuery}`, 
-      `scsearch1:${searchQuery}`
+      `ytsearch3:${searchQuery} Topic`, 
+      `ytsearch5:${searchQuery}`, 
+      `scsearch3:${searchQuery}`
     ];
 
     let matchFilter = 'duration < 600';
@@ -126,6 +123,7 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
           '--match-filter', matchFilter,
           '--remote-components', 'ejs:github',
           '--no-playlist',
+          '--concurrent-fragments', '4',
           ...extraArgs,
           '-o', outputTemplate,
           provider

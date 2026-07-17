@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Music, Play, Sparkles, Bot, Smartphone, Instagram } from 'lucide-react';
+import { Music, Play, Sparkles, Bot, Smartphone } from 'lucide-react';
 import LyricsView from './components/LyricsView';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
@@ -217,7 +217,7 @@ function App() {
                   onMouseOver={(e) => e.currentTarget.style.color = 'white'}
                   onMouseOut={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.6)'}
                 >
-                  <Instagram size={16} />
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="20" x="2" y="2" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>
                   Created by @yassirkarrouti
                 </a>
               </div>

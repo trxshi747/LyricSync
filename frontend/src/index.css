@@ -371,6 +371,10 @@ body {
   z-index: 100;
 }
 
+.credits-anchor {
+  font-size: 14px;
+}
+
 .landing-visual {
   flex: 1;
   position: relative;
@@ -613,10 +617,17 @@ body {
     position: absolute;
     top: 2.2rem;
     right: 1.5rem;
-    font-size: 11px;
     width: auto;
     margin-top: 0;
     z-index: 100;
+  }
+
+  .credits-anchor {
+    font-size: 12px;
+  }
+
+  .credits-prefix {
+    display: none;
   }
 
   .main-display {

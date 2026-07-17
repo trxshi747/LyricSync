@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Music, Play, Sparkles, Bot, Smartphone } from 'lucide-react';
+import { Music, Play, Sparkles, Bot, Smartphone, Instagram } from 'lucide-react';
 import LyricsView from './components/LyricsView';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
@@ -208,6 +208,19 @@ function App() {
               <button className="login-btn large-login" onClick={handleLogin}>
                 Connect with Spotify
               </button>
+              <div className="credits-link" style={{ marginTop: '2rem' }}>
+                <a 
+                  href="https://www.instagram.com/yassirkarrouti/" 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  style={{ color: 'rgba(255,255,255,0.6)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '14px', transition: 'color 0.2s' }}
+                  onMouseOver={(e) => e.currentTarget.style.color = 'white'}
+                  onMouseOut={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.6)'}
+                >
+                  <Instagram size={16} />
+                  Created by @yassirkarrouti
+                </a>
+              </div>
             </div>
             <div className="landing-visual">
               <div className="glow-orb primary"></div>

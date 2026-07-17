@@ -30,7 +30,12 @@ function verboseJsonToLrc(segments) {
       textLower.includes("dimatorzok") ||
       textLower.includes("amara.org") ||
       textLower.includes("thanks for watching") ||
-      textLower.includes("subscribe to");
+      textLower.includes("subscribe to") ||
+      textLower === "thank you" ||
+      textLower === "thank you." ||
+      textLower === "thank you..." ||
+      textLower === "you" ||
+      textLower === "you.";
 
     if (isHallucination) {
       // skip completely

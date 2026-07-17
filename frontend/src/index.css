@@ -364,6 +364,13 @@ body {
   font-size: 1.1rem;
 }
 
+.credits-link {
+  position: absolute;
+  top: 2rem;
+  right: 2rem;
+  z-index: 100;
+}
+
 .landing-visual {
   flex: 1;
   position: relative;
@@ -600,6 +607,15 @@ body {
   .large-login {
     width: 100%;
     justify-content: center;
+  }
+
+  .credits-link {
+    position: static;
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    margin-top: -1rem;
+    z-index: 10;
   }
 
   .main-display {

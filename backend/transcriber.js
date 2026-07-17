@@ -121,10 +121,11 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
       console.log(`Attempting native download via: ${provider} (Target length: ${durationSeconds}s)`);
       try {
         const { stdout, stderr } = await execFilePromise(ytdlpPath, [
-          '-f', 'ba[ext=m4a]/ba/best',
+          '-f', 'wa[ext=m4a]/wa/worstaudio/worst',
           '--max-filesize', '24M',
           '--match-filter', matchFilter,
           '--remote-components', 'ejs:github',
+          '--no-playlist',
           ...extraArgs,
           '-o', outputTemplate,
           provider

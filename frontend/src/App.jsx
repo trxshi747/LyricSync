@@ -12,18 +12,17 @@ function App() {
   const [unsyncedLyrics, setUnsyncedLyrics] = useState(null);
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
   const [isAiFallback, setIsAiFallback] = useState(false);
-  const [authError, setAuthError] = useState(null);
   const [progressMs, setProgressMs] = useState(0);
   const pollIntervalRef = useRef(null);
 
   // Smooth progress interpolation between API calls
   useEffect(() => {
     if (!currentTrack?.is_playing) return;
-    
+
     const interval = setInterval(() => {
       setProgressMs(prev => prev + 100);
     }, 100);
-    
+
     return () => clearInterval(interval);
   }, [currentTrack?.is_playing]);
 
@@ -49,12 +48,12 @@ function App() {
           headers: { Authorization: `Bearer ${accessToken}` }
         });
         const fetchEnd = Date.now();
-        
+
         if (res.data && res.data.is_playing) {
           // Mathematically calculate the exact network latency (round-trip divided by 2)
           const latency = Math.floor((fetchEnd - fetchStart) / 2);
           setProgressMs(res.data.progress_ms + latency);
-          
+
           // If track changed, fetch lyrics
           if (!currentTrack || currentTrack.track_id !== res.data.track_id) {
             setCurrentTrack(res.data);
@@ -62,9 +61,6 @@ function App() {
           }
         }
       } catch (error) {
-        if (error.response && error.response.status === 403) {
-          setAuthError("Spotify Premium is required to sync lyrics. Free accounts are blocked by Spotify.");
-        }
         console.error('Error fetching current track:', error);
       }
     };
@@ -79,7 +75,7 @@ function App() {
     const lines = lrcString.split('\n');
     const parsed = [];
     const timeRegex = /\[(\d{2}):(\d{2})\.(\d{2,3})\]/;
-    
+
     for (const line of lines) {
       const match = line.match(timeRegex);
       if (match) {
@@ -88,10 +84,10 @@ function App() {
         const msMatch = match[3];
         let ms = parseInt(msMatch);
         if (msMatch.length === 2) ms *= 10;
-        
+
         const timeMs = (min * 60 * 1000) + (sec * 1000) + ms;
         const text = line.replace(timeRegex, '').trim();
-        
+
         if (text) {
           parsed.push({ timeMs, text });
         }
@@ -105,16 +101,16 @@ function App() {
     setLyrics([]);
     setUnsyncedLyrics(null);
     setIsAiFallback(false);
-    
+
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    
+
     try {
       const res = await axios.get(`${BACKEND_URL}/api/lyrics`, {
         params: { track_id: trackId, track_name: trackName, artist_name: artistName, duration_ms: durationMs }
       });
-      
+
       let jobIdToPoll = null;
-      
+
       if (res.data) {
         if (res.data.source === 'genius') {
           setUnsyncedLyrics(res.data.lyrics);
@@ -128,7 +124,7 @@ function App() {
         } else if (res.data.source === 'processing') {
           jobIdToPoll = res.data.jobId;
         }
-        
+
         // Start polling if AI is running in the background
         if (jobIdToPoll) {
           pollIntervalRef.current = setInterval(async () => {
@@ -162,11 +158,11 @@ function App() {
   };
 
   return (
-    <div className="app-container" style={{ 
+    <div className="app-container" style={{
       backgroundImage: currentTrack?.image_url ? `url(${currentTrack.image_url})` : 'none',
     }}>
       <div className="bg-overlay"></div>
-      
+
       <div className="content-wrapper">
         <header className="header">
           <div className="logo">
@@ -179,12 +175,12 @@ function App() {
           <main className="landing-page">
             <div className="landing-content">
               <h1 className="landing-title">
-                Sing along with <br/><span className="highlight">perfect precision.</span>
+                Sing along with <br /><span className="highlight">perfect precision.</span>
               </h1>
               <p className="landing-subtitle">
                 Connect your Spotify account to experience real-time, beautifully synced lyrics. Powered by LRCLIB and cutting-edge Whisper AI for tracks that don't even have lyrics yet.
               </p>
-              
+
               <div className="landing-features">
                 <div className="feature-card">
                   <Sparkles className="feature-icon" size={24} />
@@ -233,16 +229,11 @@ function App() {
         ) : (
           <main className="main-display">
             <div className="track-info">
-              {authError ? (
-                <div className="track-details">
-                  <div className="track-name" style={{ color: '#ff5f56', fontSize: '2rem' }}>Premium Required</div>
-                  <div className="track-artist">{authError}</div>
-                </div>
-              ) : currentTrack ? (
+              {currentTrack ? (
                 <>
-                  <img 
-                    src={currentTrack.image_url} 
-                    alt="Album Art" 
+                  <img
+                    src={currentTrack.image_url}
+                    alt="Album Art"
                     className={`album-art ${currentTrack.is_playing ? 'spinning' : ''}`}
                   />
                   <div className="track-details">
@@ -264,12 +255,12 @@ function App() {
 
             <div style={{ flex: 1, height: '100%', minHeight: 0, position: 'relative' }}>
               {currentTrack && (
-                <LyricsView 
-                  lyrics={lyrics} 
+                <LyricsView
+                  lyrics={lyrics}
                   unsyncedLyrics={unsyncedLyrics}
-                  progressMs={progressMs} 
-                  isLoading={isLoadingLyrics} 
-                  isAiFallback={isAiFallback} 
+                  progressMs={progressMs}
+                  isLoading={isLoadingLyrics}
+                  isAiFallback={isAiFallback}
                 />
               )}
             </div>
@@ -277,15 +268,15 @@ function App() {
         )}
 
         <div className="credits-link">
-          <a 
-            href="https://www.instagram.com/yassirkarrouti/" 
-            target="_blank" 
-            rel="noreferrer" 
+          <a
+            href="https://www.instagram.com/yassirkarrouti/"
+            target="_blank"
+            rel="noreferrer"
             style={{ color: 'rgba(255,255,255,0.6)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '14px', transition: 'color 0.2s' }}
             onMouseOver={(e) => e.currentTarget.style.color = 'white'}
             onMouseOut={(e) => e.currentTarget.style.color = 'rgba(255,255,255,0.6)'}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="20" x="2" y="2" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="20" x="2" y="2" rx="5" ry="5" /><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" /><line x1="17.5" x2="17.51" y1="6.5" y2="6.5" /></svg>
             Created by @yassirkarrouti
           </a>
         </div>

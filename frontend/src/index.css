@@ -610,12 +610,13 @@ body {
   }
 
   .credits-link {
-    position: static;
-    display: flex;
-    justify-content: center;
-    width: 100%;
-    margin-top: -1rem;
-    z-index: 10;
+    position: absolute;
+    top: 2.2rem;
+    right: 1.5rem;
+    font-size: 11px;
+    width: auto;
+    margin-top: 0;
+    z-index: 100;
   }
 
   .main-display {

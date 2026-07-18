@@ -50,18 +50,23 @@ function verboseJsonToLrc(segments) {
   return lrcContent;
 }
 
-async function detectLanguage(searchQuery) {
+async function detectLanguage(searchQuery, promptText = null) {
   try {
+    let content = `Song Info: ${searchQuery}`;
+    if (promptText) {
+      content += `\nLyrics snippet:\n${promptText.substring(0, 500)}`;
+    }
+
     const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
       model: 'llama-3.3-70b-versatile',
       messages: [
         {
           role: "system",
-          content: "You are a language detection bot. Given a song title and artist, determine the primary language of the lyrics. Make an educated guess based on the words in the title even if the artist is unknown. Return ONLY the 2-letter ISO-639-1 language code (e.g. 'en', 'de', 'ru', 'fr', 'es', 'ja', 'ko'). If it is purely instrumental or completely impossible to guess, return 'auto'."
+          content: "You are a language detection bot. Determine the primary language of the lyrics. If lyrics are provided, base your answer entirely on them. If only the title is provided, make an educated guess. Return ONLY the 2-letter ISO-639-1 language code (e.g. 'en', 'de', 'ru', 'fr', 'es', 'ja', 'ko'). If it is purely instrumental or completely impossible to guess, return 'auto'."
         },
         {
           role: "user",
-          content: searchQuery
+          content: content
         }
       ],
       temperature: 0.1
@@ -187,8 +192,8 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
 
     console.log(`Uploading audio to Groq Whisper API for transcription...`);
     
-    // Detect primary language to prevent Whisper from locking onto intro languages
-    const detectedLang = await detectLanguage(searchQuery);
+    // Detect primary language to prevent Whisper from locking onto intro languages or hallucinating
+    const detectedLang = await detectLanguage(searchQuery, promptText);
     if (detectedLang) {
       console.log(`Detected primary language: ${detectedLang}`);
     }

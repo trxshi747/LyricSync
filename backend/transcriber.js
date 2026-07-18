@@ -53,6 +53,36 @@ function verboseJsonToLrc(segments) {
   return lrcContent;
 }
 
+async function detectLanguage(searchQuery) {
+  try {
+    const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        {
+          role: "system",
+          content: "You are a language detection bot. Given a song title and artist, determine the primary language of the lyrics. Return ONLY the 2-letter ISO-639-1 language code (e.g. 'en', 'ru', 'fr', 'es', 'ja', 'ko'). If you are completely unsure or it is purely instrumental, return 'auto'."
+        },
+        {
+          role: "user",
+          content: searchQuery
+        }
+      ],
+      temperature: 0.1
+    }, {
+      headers: {
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const code = response.data.choices[0].message.content.trim().toLowerCase();
+    return code.length === 2 ? code : null;
+  } catch (e) {
+    console.warn("Language detection failed:", e.message);
+    return null;
+  }
+}
+
 async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = null) {
   if (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY === 'your_groq_api_key') {
     console.warn("Groq API key missing or invalid. Cannot transcribe.");
@@ -159,10 +189,21 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
     }
 
     console.log(`Uploading audio to Groq Whisper API for transcription...`);
+    
+    // Detect primary language to prevent Whisper from locking onto intro languages
+    const detectedLang = await detectLanguage(searchQuery);
+    if (detectedLang) {
+      console.log(`Detected primary language: ${detectedLang}`);
+    }
+
     const formData = new FormData();
     formData.append('file', fs.createReadStream(actualFilePath));
     formData.append('model', 'whisper-large-v3');
     formData.append('response_format', 'verbose_json');
+    
+    if (detectedLang) {
+      formData.append('language', detectedLang);
+    }
     // Whisper accepts up to 244 tokens (~800 characters) as a prompt to guide its vocabulary and alignment. 
     // IMPORTANT: Do NOT use conversational instructions here (like "Transcribe this..."), because Whisper will treat it as preceding audio and hallucinate it!
     let whisperPrompt = `Song: ${searchQuery}. `;

@@ -13,6 +13,12 @@ function App() {
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
   const [isAiFallback, setIsAiFallback] = useState(false);
   const [authError, setAuthError] = useState(null);
+  
+  // Translation state
+  const [translatedLyrics, setTranslatedLyrics] = useState(null);
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [showTranslation, setShowTranslation] = useState(false);
+  
   const [progressMs, setProgressMs] = useState(0);
   const pollIntervalRef = useRef(null);
 
@@ -100,11 +106,14 @@ function App() {
     return parsed;
   };
 
+  // Fetch lyrics from backend
   const fetchLyrics = async (trackId, trackName, artistName, durationMs) => {
     setIsLoadingLyrics(true);
     setLyrics([]);
     setUnsyncedLyrics(null);
     setIsAiFallback(false);
+    setTranslatedLyrics(null);
+    setShowTranslation(false);
 
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
 
@@ -159,6 +168,44 @@ function App() {
 
   const handleLogin = () => {
     window.location.href = `${BACKEND_URL}/auth/login`;
+  };
+
+  const handleTranslate = async () => {
+    if (isTranslating) return;
+    
+    // Toggle translation if already translated
+    if (translatedLyrics) {
+      setShowTranslation(!showTranslation);
+      return;
+    }
+
+    setIsTranslating(true);
+    try {
+      let lyricsArrayToTranslate = [];
+      if (lyrics.length > 0) {
+        lyricsArrayToTranslate = lyrics;
+      } else if (unsyncedLyrics) {
+        // If it's unsynced lyrics, split by line and map to array format
+        lyricsArrayToTranslate = unsyncedLyrics.split('\n').map((text, i) => ({ timeMs: i, text }));
+      }
+
+      const res = await axios.post(`${BACKEND_URL}/api/translate`, { lyricsArray: lyricsArrayToTranslate });
+      
+      if (res.data && res.data.translatedLyrics) {
+        if (lyrics.length > 0) {
+          setTranslatedLyrics(res.data.translatedLyrics);
+        } else if (unsyncedLyrics) {
+          // Join back to string
+          setTranslatedLyrics(res.data.translatedLyrics.map(l => l.text).join('\n'));
+        }
+        setShowTranslation(true);
+      }
+    } catch (error) {
+      console.error('Translation error:', error);
+      alert('Failed to translate lyrics. Please try again.');
+    } finally {
+      setIsTranslating(false);
+    }
   };
 
   return (
@@ -265,11 +312,15 @@ function App() {
             <div style={{ flex: 1, height: '100%', minHeight: 0, position: 'relative' }}>
               {currentTrack && (
                 <LyricsView
-                  lyrics={lyrics}
-                  unsyncedLyrics={unsyncedLyrics}
+                  lyrics={showTranslation && Array.isArray(translatedLyrics) ? translatedLyrics : lyrics}
+                  unsyncedLyrics={showTranslation && typeof translatedLyrics === 'string' ? translatedLyrics : unsyncedLyrics}
                   progressMs={progressMs}
                   isLoading={isLoadingLyrics}
                   isAiFallback={isAiFallback}
+                  onTranslate={handleTranslate}
+                  isTranslating={isTranslating}
+                  showTranslation={showTranslation}
+                  canTranslate={(lyrics.length > 0 || unsyncedLyrics)}
                 />
               )}
             </div>

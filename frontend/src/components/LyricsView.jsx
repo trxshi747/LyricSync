@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Crosshair } from 'lucide-react';
+import { Crosshair, Languages, Loader2 } from 'lucide-react';
 
 const SingleMusicNote = () => (
   <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" className="instrumental-icon">
@@ -8,7 +8,7 @@ const SingleMusicNote = () => (
   </svg>
 );
 
-const LyricsView = ({ lyrics, unsyncedLyrics, progressMs, isLoading, isAiFallback }) => {
+const LyricsView = ({ lyrics, unsyncedLyrics, progressMs, isLoading, isAiFallback, onTranslate, isTranslating, showTranslation, canTranslate }) => {
   const containerRef = useRef(null);
   const [isAutoScroll, setIsAutoScroll] = useState(true);
 
@@ -113,15 +113,33 @@ const LyricsView = ({ lyrics, unsyncedLyrics, progressMs, isLoading, isAiFallbac
         })}
       </div>
 
-      {!isAutoScroll && (
-        <button 
-          className="sync-lock-btn" 
-          onClick={() => setIsAutoScroll(true)}
-        >
-          <Crosshair size={18} />
-          Sync
-        </button>
-      )}
+      <div className="lyrics-actions">
+        {canTranslate && (
+          <button 
+            className={`action-btn translate-btn ${showTranslation ? 'active' : ''}`}
+            onClick={onTranslate}
+            disabled={isTranslating}
+            title="Translate to English"
+          >
+            {isTranslating ? (
+              <Loader2 size={20} className="spinner" />
+            ) : (
+              <Languages size={20} />
+            )}
+            <span>{showTranslation ? 'English' : 'Translate'}</span>
+          </button>
+        )}
+        
+        {!isAutoScroll && lyrics && lyrics.length > 0 && (
+          <button 
+            className="action-btn resume-scroll" 
+            onClick={() => setIsAutoScroll(true)}
+          >
+            <Crosshair size={20} />
+            <span>Resume</span>
+          </button>
+        )}
+      </div>
     </div>
   );
 };

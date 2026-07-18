@@ -244,35 +244,65 @@ body {
   transform: scale(1);
 }
 
-.sync-lock-btn {
-  position: fixed;
+.lyrics-actions {
+  position: absolute;
   bottom: 2rem;
   right: 2rem;
-  background: var(--accent-color);
-  color: white;
-  border: none;
-  padding: 0.75rem 1.25rem;
-  border-radius: 2rem;
+  display: flex;
+  gap: 0.75rem;
+  z-index: 10;
+}
+
+.action-btn {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 0.75rem 1.25rem;
+  border-radius: 20px;
+  cursor: pointer;
   font-family: 'Inter', sans-serif;
   font-weight: 600;
-  font-size: 0.9rem;
-  cursor: pointer;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.5), 0 0 15px var(--accent-glow);
-  z-index: 10;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
   animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
-@keyframes popIn {
-  from { transform: scale(0); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+.action-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
 }
 
-.sync-lock-btn:hover {
+.action-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.translate-btn.active {
+  background: rgba(30, 215, 96, 0.2);
+  border-color: rgba(30, 215, 96, 0.5);
+  color: #1ed760;
+}
+
+.resume-scroll {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.5), 0 0 15px var(--accent-glow);
+}
+
+.resume-scroll:hover {
   background: #1ed760;
-  transform: translateY(-2px);
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  100% { transform: rotate(360deg); }
 }
 
 .lyrics-container.unsynced {
@@ -688,7 +718,7 @@ body {
     margin-bottom: 1.5rem;
   }
 
-  .sync-lock-btn {
+  .lyrics-actions {
     bottom: 4rem; /* Lift it above mobile browser navigation bars */
     right: 1.5rem;
   }

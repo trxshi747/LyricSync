@@ -141,6 +141,59 @@ app.get('/api/lyrics/job', (req, res) => {
   res.json(job);
 });
 
+app.post('/api/translate', async (req, res) => {
+  const { lyricsArray } = req.body;
+  if (!lyricsArray || !Array.isArray(lyricsArray) || lyricsArray.length === 0) {
+    return res.status(400).json({ error: 'Missing or empty lyricsArray' });
+  }
+
+  try {
+    const textLines = lyricsArray.map((l, i) => `${i}::${l.text}`).join('\n');
+
+    const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      model: 'llama3-70b-8192',
+      messages: [
+        {
+          role: "system",
+          content: "You are a professional translator. I will provide song lyrics where each line is prefixed by 'id::'. Translate the text into English, preserving the poetic structure, meaning, and tone. Do NOT translate proper names (artists, character names). Return the translation in exactly the same 'id::text' format. Maintain the same number of lines. Do not add any conversational text or markdown, just the translated lines."
+        },
+        {
+          role: "user",
+          content: textLines
+        }
+      ],
+      temperature: 0.3
+    }, {
+      headers: {
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const translatedContent = response.data.choices[0].message.content;
+    const translatedLines = translatedContent.split('\n');
+    
+    // Parse the translated lines back into the array
+    const translatedArray = [...lyricsArray];
+    
+    for (const line of translatedLines) {
+      const match = line.match(/^(\d+)::(.*)/);
+      if (match) {
+        const index = parseInt(match[1]);
+        const translatedText = match[2].trim();
+        if (translatedArray[index]) {
+          translatedArray[index] = { ...translatedArray[index], text: translatedText };
+        }
+      }
+    }
+
+    res.json({ translatedLyrics: translatedArray });
+  } catch (error) {
+    console.error('Error translating lyrics:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Translation failed' });
+  }
+});
+
 app.get('/api/lyrics', async (req, res) => {
   const { track_id, track_name, artist_name, duration_ms } = req.query;
   

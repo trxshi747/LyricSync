@@ -27,7 +27,8 @@ function verboseJsonToLrc(segments) {
     const badKeywords = [
       "subtitles", "субтитры", "dimatorzok", "amara.org", "thanks for watching", 
       "subscribe to", "tanscrit", "transcrit", "transcriber", "sous-titre", 
-      "altyazı", "çizgi film", "ترجمة", "captioned", "provided to youtube"
+      "altyazı", "çizgi film", "ترجمة", "captioned", "provided to youtube",
+      "자막" // Korean for subtitle
     ];
     
     let isHallucination = badKeywords.some(keyword => textLower.includes(keyword));
@@ -56,7 +57,7 @@ async function detectLanguage(searchQuery) {
       messages: [
         {
           role: "system",
-          content: "You are a language detection bot. Given a song title and artist, determine the primary language of the lyrics. Return ONLY the 2-letter ISO-639-1 language code (e.g. 'en', 'ru', 'fr', 'es', 'ja', 'ko'). If you are completely unsure or it is purely instrumental, return 'auto'."
+          content: "You are a language detection bot. Given a song title and artist, determine the primary language of the lyrics. Make an educated guess based on the words in the title even if the artist is unknown. Return ONLY the 2-letter ISO-639-1 language code (e.g. 'en', 'de', 'ru', 'fr', 'es', 'ja', 'ko'). If it is purely instrumental or completely impossible to guess, return 'auto'."
         },
         {
           role: "user",

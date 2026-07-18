@@ -160,11 +160,14 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
     formData.append('model', 'whisper-large-v3');
     formData.append('response_format', 'verbose_json');
     // Whisper accepts up to 244 tokens (~800 characters) as a prompt to guide its vocabulary and alignment
+    let whisperPrompt = `Multilingual song: ${searchTerm}. Transcribe all lyrics accurately in their original languages without translating them. `;
     if (promptText) {
-      const safePrompt = promptText.substring(0, 800);
-      formData.append('prompt', safePrompt);
-      console.log(`Attached Genius text as transcription prompt to force precise alignment.`);
+      whisperPrompt += promptText;
     }
+    
+    const safePrompt = whisperPrompt.substring(0, 800);
+    formData.append('prompt', safePrompt);
+    console.log(`Attached transcription prompt to force precise alignment and multilingual handling.`);
 
     const response = await axios.post('https://api.groq.com/openai/v1/audio/transcriptions', formData, {
       headers: {

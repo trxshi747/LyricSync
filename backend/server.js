@@ -151,7 +151,7 @@ app.post('/api/translate', async (req, res) => {
     const textLines = lyricsArray.map((l, i) => `${i}::${l.text}`).join('\n');
 
     const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: 'llama3-70b-8192',
+      model: 'llama-3.3-70b-versatile',
       messages: [
         {
           role: "system",

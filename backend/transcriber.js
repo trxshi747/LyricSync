@@ -160,7 +160,7 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
     formData.append('model', 'whisper-large-v3');
     formData.append('response_format', 'verbose_json');
     // Whisper accepts up to 244 tokens (~800 characters) as a prompt to guide its vocabulary and alignment
-    let whisperPrompt = `Multilingual song: ${searchTerm}. Transcribe all lyrics accurately in their original languages without translating them. `;
+    let whisperPrompt = `Multilingual song: ${searchQuery}. Transcribe all lyrics accurately in their original languages without translating them. `;
     if (promptText) {
       whisperPrompt += promptText;
     }

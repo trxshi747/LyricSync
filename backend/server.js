@@ -152,10 +152,11 @@ app.post('/api/translate', async (req, res) => {
 
     const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
       model: 'llama-3.3-70b-versatile',
+      response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
-          content: "You are a professional translator. I will provide song lyrics where each line is prefixed by 'id::'. Translate the text into English, preserving the poetic structure, meaning, and tone. Do NOT translate proper names (artists, character names). Return the translation in exactly the same 'id::text' format. Maintain the same number of lines. Do not add any conversational text or markdown, just the translated lines."
+          content: "You are a professional translator. I will provide song lyrics where each line is prefixed by 'id::'. Translate the text into English, preserving the poetic structure, meaning, and tone. Do NOT translate proper names. You MUST return your response as a valid JSON object with a single key 'translations' whose value is an array of objects. Each object must have an 'id' (number) and 'text' (string) containing the translated line."
         },
         {
           role: "user",
@@ -171,19 +172,17 @@ app.post('/api/translate', async (req, res) => {
     });
 
     const translatedContent = response.data.choices[0].message.content;
-    const translatedLines = translatedContent.split('\n');
+    const parsedData = JSON.parse(translatedContent);
+    const translations = parsedData.translations || [];
     
     // Parse the translated lines back into the array
     const translatedArray = [...lyricsArray];
     
-    for (const line of translatedLines) {
-      const match = line.match(/^(\d+)::(.*)/);
-      if (match) {
-        const index = parseInt(match[1]);
-        const translatedText = match[2].trim();
-        if (translatedArray[index]) {
-          translatedArray[index] = { ...translatedArray[index], text: translatedText };
-        }
+    for (const item of translations) {
+      const index = parseInt(item.id);
+      const translatedText = item.text;
+      if (!isNaN(index) && translatedArray[index]) {
+        translatedArray[index] = { ...translatedArray[index], text: translatedText };
       }
     }
 

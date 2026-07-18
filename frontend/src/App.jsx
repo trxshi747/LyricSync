@@ -6,7 +6,7 @@ import LyricsView from './components/LyricsView';
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
 function App() {
-  const [accessToken, setAccessToken] = useState(null);
+  const [accessToken, setAccessToken] = useState(() => localStorage.getItem('access_token'));
   const [currentTrack, setCurrentTrack] = useState(null);
   const [lyrics, setLyrics] = useState([]);
   const [unsyncedLyrics, setUnsyncedLyrics] = useState(null);
@@ -37,8 +37,11 @@ function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
     if (token) {
       setAccessToken(token);
+      localStorage.setItem('access_token', token);
+      if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
       // Clean up URL
       window.history.replaceState({}, document.title, "/");
     }
@@ -68,7 +71,30 @@ function App() {
           }
         }
       } catch (error) {
-        if (error.response && error.response.status === 403) {
+        if (error.response && error.response.status === 401) {
+          // Token expired, try to refresh
+          const refreshToken = localStorage.getItem('refresh_token');
+          if (refreshToken) {
+            try {
+              const refreshRes = await axios.post(`${BACKEND_URL}/auth/refresh`, { refresh_token: refreshToken });
+              if (refreshRes.data && refreshRes.data.access_token) {
+                setAccessToken(refreshRes.data.access_token);
+                localStorage.setItem('access_token', refreshRes.data.access_token);
+                return; // Will retry on next interval tick
+              }
+            } catch (refreshErr) {
+              console.error('Failed to refresh token:', refreshErr);
+              // Refresh failed, logout
+              setAccessToken(null);
+              localStorage.removeItem('access_token');
+              localStorage.removeItem('refresh_token');
+            }
+          } else {
+            // No refresh token, logout
+            setAccessToken(null);
+            localStorage.removeItem('access_token');
+          }
+        } else if (error.response && error.response.status === 403) {
           setAuthError("Spotify Premium is required to sync lyrics. Free accounts are blocked by Spotify.");
         }
         console.error('Error fetching current track:', error);

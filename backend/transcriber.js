@@ -62,7 +62,7 @@ async function detectLanguage(searchQuery, promptText = null) {
       messages: [
         {
           role: "system",
-          content: "You are a language detection bot. Determine the primary language of the lyrics. If lyrics are provided, base your answer entirely on them. If only the title is provided, make an educated guess. Return ONLY the 2-letter ISO-639-1 language code (e.g. 'en', 'de', 'ru', 'fr', 'es', 'ja', 'ko'). If it is purely instrumental or completely impossible to guess, return 'auto'."
+          content: "You are a language detection bot. Determine the ORIGINAL spoken/sung language of the song. If the lyrics provided appear to be an English translation of a foreign song (e.g. 'Du Hast' is German), you MUST return the ISO code of the ORIGINAL language, NOT 'en'. Return ONLY the 2-letter ISO-639-1 language code (e.g. 'en', 'de', 'ru', 'fr', 'es', 'ja', 'ko'). If it is completely impossible to guess, return 'auto'."
         },
         {
           role: "user",
@@ -202,6 +202,7 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
     formData.append('file', fs.createReadStream(actualFilePath));
     formData.append('model', 'whisper-large-v3');
     formData.append('response_format', 'verbose_json');
+    formData.append('task', 'transcribe');
     
     if (detectedLang) {
       formData.append('language', detectedLang);

@@ -104,7 +104,20 @@ app.get('/api/current-track', async (req, res) => {
   const tempApi = new SpotifyWebApi({ accessToken: token });
 
   try {
-    const data = await tempApi.getMyCurrentPlayingTrack();
+    let data;
+    for (let i = 0; i < 3; i++) {
+      try {
+        data = await tempApi.getMyCurrentPlayingTrack();
+        break; // Success
+      } catch (err) {
+        if (err.message && err.message.includes('Client network socket disconnected') && i < 2) {
+          console.warn('Spotify API socket disconnected. Retrying...');
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
+        throw err;
+      }
+    }
     if (!data.body || !data.body.item) {
       return res.json({ is_playing: false });
     }

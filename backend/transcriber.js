@@ -31,6 +31,10 @@ function verboseJsonToLrc(segments) {
       textLower.includes("amara.org") ||
       textLower.includes("thanks for watching") ||
       textLower.includes("subscribe to") ||
+      textLower.includes("tanscrit") ||
+      textLower.includes("transcrit") ||
+      textLower.includes("transcriber") ||
+      textLower.includes("sous-titre") ||
       textLower === "thank you" ||
       textLower === "thank you." ||
       textLower === "thank you..." ||
@@ -159,8 +163,9 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
     formData.append('file', fs.createReadStream(actualFilePath));
     formData.append('model', 'whisper-large-v3');
     formData.append('response_format', 'verbose_json');
-    // Whisper accepts up to 244 tokens (~800 characters) as a prompt to guide its vocabulary and alignment
-    let whisperPrompt = `Multilingual song: ${searchQuery}. Transcribe all lyrics accurately in their original languages without translating them. `;
+    // Whisper accepts up to 244 tokens (~800 characters) as a prompt to guide its vocabulary and alignment. 
+    // IMPORTANT: Do NOT use conversational instructions here (like "Transcribe this..."), because Whisper will treat it as preceding audio and hallucinate it!
+    let whisperPrompt = `Song: ${searchQuery}. `;
     if (promptText) {
       whisperPrompt += promptText;
     }

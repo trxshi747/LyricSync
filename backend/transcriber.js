@@ -164,7 +164,7 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
           ...extraArgs,
           '-o', outputTemplate,
           provider
-        ]);
+        ], { timeout: 60000 }); // 60 second timeout to prevent infinite hangs
         console.log(`yt-dlp stdout:`, stdout);
         if (stderr) console.log(`yt-dlp stderr:`, stderr);
 

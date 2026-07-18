@@ -24,22 +24,18 @@ function verboseJsonToLrc(segments) {
     const textLower = cleanText.toLowerCase();
 
     // Filter out common Whisper AI hallucinations during silent/instrumental sections
-    const isHallucination =
-      textLower.includes("subtitles by") ||
-      textLower.includes("субтитры") || // Russian for subtitles
-      textLower.includes("dimatorzok") ||
-      textLower.includes("amara.org") ||
-      textLower.includes("thanks for watching") ||
-      textLower.includes("subscribe to") ||
-      textLower.includes("tanscrit") ||
-      textLower.includes("transcrit") ||
-      textLower.includes("transcriber") ||
-      textLower.includes("sous-titre") ||
-      textLower === "thank you" ||
-      textLower === "thank you." ||
-      textLower === "thank you..." ||
-      textLower === "you" ||
-      textLower === "you.";
+    const badKeywords = [
+      "subtitles", "субтитры", "dimatorzok", "amara.org", "thanks for watching", 
+      "subscribe to", "tanscrit", "transcrit", "transcriber", "sous-titre", 
+      "altyazı", "çizgi film", "ترجمة", "captioned", "provided to youtube"
+    ];
+    
+    let isHallucination = badKeywords.some(keyword => textLower.includes(keyword));
+    
+    if (textLower === "thank you" || textLower === "thank you." || textLower === "thank you..." || 
+        textLower === "you" || textLower === "you." || textLower === "music." || textLower === "music") {
+      isHallucination = true;
+    }
 
     if (isHallucination) {
       // skip completely
@@ -205,15 +201,14 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
       formData.append('language', detectedLang);
     }
     // Whisper accepts up to 244 tokens (~800 characters) as a prompt to guide its vocabulary and alignment. 
-    // IMPORTANT: Do NOT use conversational instructions here (like "Transcribe this..."), because Whisper will treat it as preceding audio and hallucinate it!
-    let whisperPrompt = `Song: ${searchQuery}. `;
-    if (promptText) {
-      whisperPrompt += promptText;
-    }
+    // IMPORTANT: Do NOT use conversational instructions here. We also removed the searchQuery (title/artist) because Whisper was hallucinating it during silent sections!
+    let whisperPrompt = promptText ? promptText : "";
     
-    const safePrompt = whisperPrompt.substring(0, 800);
-    formData.append('prompt', safePrompt);
-    console.log(`Attached transcription prompt to force precise alignment and multilingual handling.`);
+    if (whisperPrompt) {
+      const safePrompt = whisperPrompt.substring(0, 800);
+      formData.append('prompt', safePrompt);
+      console.log(`Attached transcription prompt from Genius to force precise alignment.`);
+    }
 
     const response = await axios.post('https://api.groq.com/openai/v1/audio/transcriptions', formData, {
       headers: {

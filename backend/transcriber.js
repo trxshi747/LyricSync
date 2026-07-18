@@ -202,7 +202,6 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
     formData.append('file', fs.createReadStream(actualFilePath));
     formData.append('model', 'whisper-large-v3');
     formData.append('response_format', 'verbose_json');
-    formData.append('task', 'transcribe');
     
     if (detectedLang) {
       formData.append('language', detectedLang);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Music, Play, Sparkles, Bot, Smartphone, AlertTriangle, X } from 'lucide-react';
+import { Analytics } from "@vercel/analytics/react";
 import LyricsView from './components/LyricsView';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
@@ -408,6 +409,7 @@ function App() {
           </a>
         </div>
       </div>
+      <Analytics />
     </div>
   );
 }

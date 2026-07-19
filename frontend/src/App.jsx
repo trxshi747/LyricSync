@@ -305,37 +305,28 @@ function App() {
             </div>
 
             {showWhitelistModal && (
-              <div style={{
-                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
-                background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(10px)', 
-                display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                zIndex: 1000, padding: '20px'
-              }}>
-                <div style={{
-                  background: 'rgba(25, 25, 30, 0.95)', border: '1px solid rgba(255,255,255,0.1)', 
-                  borderRadius: '24px', padding: '40px', maxWidth: '550px', width: '100%', 
-                  position: 'relative', boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
-                }}>
+              <div className="whitelist-modal-overlay">
+                <div className="whitelist-modal-content">
                   <button 
                     onClick={() => setShowWhitelistModal(false)}
-                    style={{ position: 'absolute', top: '20px', right: '20px', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '5px' }}
+                    className="whitelist-modal-close"
                   >
                     <X size={24} />
                   </button>
                   
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '20px', color: '#ffcc00' }}>
+                  <div className="whitelist-modal-header">
                     <AlertTriangle size={32} />
-                    <h2 style={{ margin: 0, fontSize: '1.8rem', color: 'white' }}>Developer Mode Active</h2>
+                    <h2 className="whitelist-modal-title">Developer Mode Active</h2>
                   </div>
                   
-                  <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '1.1rem', lineHeight: '1.6', marginBottom: '20px' }}>
+                  <p className="whitelist-modal-text">
                     Due to Spotify's strict API rules, this application is currently in <strong>Development Mode</strong>. 
                   </p>
-                  <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '1.1rem', lineHeight: '1.6', marginBottom: '30px' }}>
+                  <p className="whitelist-modal-text" style={{ marginBottom: '30px' }}>
                     This means you <strong>cannot log in</strong> unless your Spotify email has been manually added to the whitelist. If you try to connect without being whitelisted, Spotify will block you with an <code>INVALID_CLIENT</code> error.
                   </p>
                   
-                  <div style={{ background: 'rgba(255,255,255,0.05)', padding: '25px', borderRadius: '15px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div className="whitelist-modal-contact">
                     <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', color: 'white' }}>Want to try the app?</h3>
                     <p style={{ margin: 0, color: 'rgba(255,255,255,0.7)', lineHeight: '1.5' }}>
                       Please contact me on Instagram <strong><a href="https://www.instagram.com/yassirkarrouti/" target="_blank" rel="noreferrer" style={{ color: '#1db954', textDecoration: 'none' }}>@yassirkarrouti</a></strong> with the email address linked to your Spotify account, and I will manually add you to the whitelist!
@@ -344,9 +335,7 @@ function App() {
                   
                   <button 
                     onClick={() => setShowWhitelistModal(false)}
-                    style={{ width: '100%', padding: '15px', background: 'white', color: 'black', border: 'none', borderRadius: '30px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', marginTop: '30px', transition: 'opacity 0.2s' }}
-                    onMouseOver={(e) => e.target.style.opacity = 0.9}
-                    onMouseOut={(e) => e.target.style.opacity = 1}
+                    className="whitelist-modal-btn"
                   >
                     I understand
                   </button>

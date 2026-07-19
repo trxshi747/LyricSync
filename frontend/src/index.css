@@ -734,4 +734,15 @@ body {
 .whitelist-modal-contact { background: rgba(255,255,255,0.05); padding: 25px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.05); }
 .whitelist-modal-btn { width: 100%; padding: 15px; background: white; color: black; border: none; border-radius: 30px; font-size: 1.1rem; font-weight: bold; cursor: pointer; margin-top: 30px; transition: opacity 0.2s; }
 .whitelist-modal-btn:hover { opacity: 0.9; }
-@media (max-width: 600px) { .whitelist-modal-overlay { padding: 15px; } .whitelist-modal-content { padding: 30px 20px; } .whitelist-modal-title { font-size: 1.4rem; } .whitelist-modal-text { font-size: 1rem; margin-bottom: 15px; } .whitelist-modal-contact { padding: 20px; } }
+@media (max-width: 600px) { 
+  .whitelist-modal-overlay { padding: 10px; } 
+  .whitelist-modal-content { padding: 25px 15px; max-height: 85vh; overflow-y: auto; } 
+  .whitelist-modal-header { margin-bottom: 10px; }
+  .whitelist-modal-title { font-size: 1.25rem; } 
+  .whitelist-modal-text { font-size: 0.9rem; margin-bottom: 10px; line-height: 1.4; } 
+  .whitelist-modal-contact { padding: 15px; } 
+  .whitelist-modal-contact h3 { font-size: 1rem !important; margin-bottom: 5px !important; }
+  .whitelist-modal-contact p { font-size: 0.85rem !important; }
+  .whitelist-modal-btn { margin-top: 15px; padding: 12px; font-size: 1rem; }
+  .whitelist-modal-close { top: 15px; right: 15px; }
+}

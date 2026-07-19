@@ -38,109 +38,48 @@ async function runBackgroundAiJob(trackId, trackName, artistName, durationSecond
 app.use(cors());
 app.use(express.json());
 
-const spotifyApi = new SpotifyWebApi({
-  clientId: process.env.SPOTIFY_CLIENT_ID,
-  clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
-  redirectUri: process.env.SPOTIFY_REDIRECT_URI || 'http://localhost:3001/auth/callback'
-});
-
-const scopes = [
-  'user-read-currently-playing',
-  'user-read-playback-state',
-];
-
-app.get('/auth/login', (req, res) => {
-  const state = Math.random().toString(36).substring(7);
-  const authorizeURL = spotifyApi.createAuthorizeURL(scopes, state);
-  res.redirect(authorizeURL);
-});
-
-app.get('/auth/callback', async (req, res) => {
-  const code = req.query.code;
-  if (!code) {
-    return res.status(400).send('No code provided');
-  }
-  try {
-    const data = await spotifyApi.authorizationCodeGrant(code);
-    const { access_token, refresh_token, expires_in } = data.body;
-
-    spotifyApi.setAccessToken(access_token);
-    spotifyApi.setRefreshToken(refresh_token);
-
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    // Redirect to frontend with tokens
-    res.redirect(`${frontendUrl}/?access_token=${access_token}&refresh_token=${refresh_token}`);
-  } catch (error) {
-    console.error('Error during auth callback', error);
-    res.status(500).send('Authentication Failed');
-  }
-});
-
-app.post('/auth/refresh', async (req, res) => {
-  const { refresh_token } = req.body;
-  if (!refresh_token) return res.status(400).send('No refresh token');
-
-  const tempApi = new SpotifyWebApi({
-    clientId: process.env.SPOTIFY_CLIENT_ID,
-    clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
-    refreshToken: refresh_token
-  });
-
-  try {
-    const data = await tempApi.refreshAccessToken();
-    res.json({ access_token: data.body.access_token });
-  } catch (err) {
-    res.status(500).json({ error: 'Could not refresh token' });
-  }
-});
+const LASTFM_API_KEY = process.env.LASTFM_API_KEY;
 
 // --- API Endpoints ---
 
+
 app.get('/api/current-track', async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ error: 'No token provided' });
-  
-  const token = authHeader.split(' ')[1];
-  const tempApi = new SpotifyWebApi({ accessToken: token });
+  const username = req.query.username;
+  if (!username) return res.status(400).json({ error: 'No username provided' });
+  if (!LASTFM_API_KEY) return res.status(500).json({ error: 'Last.fm API key not configured' });
 
   try {
-    let data;
-    for (let i = 0; i < 3; i++) {
-      try {
-        data = await tempApi.getMyCurrentPlayingTrack();
-        break; // Success
-      } catch (err) {
-        if (err.message && err.message.includes('Client network socket disconnected') && i < 2) {
-          console.warn('Spotify API socket disconnected. Retrying...');
-          await new Promise(r => setTimeout(r, 500));
-          continue;
-        }
-        throw err;
-      }
+    const url = `http://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks&user=${encodeURIComponent(username)}&api_key=${LASTFM_API_KEY}&format=json&limit=1`;
+    const response = await axios.get(url);
+    
+    if (response.data.error) {
+       return res.status(400).json({ error: response.data.message });
     }
-    if (!data.body || !data.body.item) {
+
+    const tracks = response.data.recenttracks?.track;
+    if (!tracks || tracks.length === 0) {
+      return res.json({ is_playing: false });
+    }
+
+    const currentTrack = tracks[0];
+    const isPlaying = currentTrack['@attr'] && currentTrack['@attr'].nowplaying === 'true';
+    
+    if (!isPlaying) {
       return res.json({ is_playing: false });
     }
     
-    const track = data.body.item;
     res.json({
-      is_playing: data.body.is_playing,
-      progress_ms: data.body.progress_ms,
-      track_id: track.id,
-      name: track.name,
-      artist: track.artists[0].name,
-      album: track.album.name,
-      duration_ms: track.duration_ms,
-      image_url: track.album.images.length > 0 ? track.album.images[0].url : null,
+      is_playing: true,
+      progress_ms: 0,
+      track_id: currentTrack.mbid || `${currentTrack.name}-${currentTrack.artist['#text']}`,
+      name: currentTrack.name,
+      artist: currentTrack.artist['#text'],
+      album: currentTrack.album['#text'],
+      duration_ms: 0,
+      image_url: currentTrack.image && currentTrack.image.length > 0 ? currentTrack.image[currentTrack.image.length - 1]['#text'] : null
     });
   } catch (error) {
-    console.error('Error getting current track:', error);
-    if (error.statusCode === 401) {
-      return res.status(401).json({ error: 'Token expired' });
-    }
-    if (error.statusCode === 403) {
-      return res.status(403).json({ error: 'Premium required' });
-    }
+    console.error('Error getting Last.fm track:', error.message);
     res.status(500).json({ error: 'Failed to fetch current track' });
   }
 });

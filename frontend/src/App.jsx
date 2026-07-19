@@ -6,19 +6,19 @@ import LyricsView from './components/LyricsView';
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
 function App() {
-  const [lastFmUsername, setLastFmUsername] = useState(() => localStorage.getItem('lastfm_username'));
-  const [inputUsername, setInputUsername] = useState('');
+  const [accessToken, setAccessToken] = useState(() => localStorage.getItem('access_token'));
   const [currentTrack, setCurrentTrack] = useState(null);
   const [lyrics, setLyrics] = useState([]);
   const [unsyncedLyrics, setUnsyncedLyrics] = useState(null);
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
   const [isAiFallback, setIsAiFallback] = useState(false);
-  
+  const [authError, setAuthError] = useState(null);
+
   // Translation state
   const [translatedLyrics, setTranslatedLyrics] = useState(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [showTranslation, setShowTranslation] = useState(false);
-  
+
   const [progressMs, setProgressMs] = useState(0);
   const pollIntervalRef = useRef(null);
 
@@ -33,51 +33,78 @@ function App() {
     return () => clearInterval(interval);
   }, [currentTrack?.is_playing]);
 
-  // Start syncing when username is set
-  const handleConnect = (e) => {
-    e.preventDefault();
-    if (!inputUsername.trim()) return;
-    setLastFmUsername(inputUsername.trim());
-    localStorage.setItem('lastfm_username', inputUsername.trim());
-  };
-
-  const handleDisconnect = () => {
-    setLastFmUsername(null);
-    localStorage.removeItem('lastfm_username');
-    setCurrentTrack(null);
-    setLyrics([]);
-  };
-
-  // Poll Last.fm Current Track
+  // Handle OAuth Callback parsing
   useEffect(() => {
-    if (!lastFmUsername) return;
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    if (token) {
+      setAccessToken(token);
+      localStorage.setItem('access_token', token);
+      if (refreshToken) localStorage.setItem('refresh_token', refreshToken);
+      // Clean up URL
+      window.history.replaceState({}, document.title, "/");
+    }
+  }, []);
+
+  // Poll Spotify Current Track
+  useEffect(() => {
+    if (!accessToken) return;
 
     const fetchCurrentTrack = async () => {
       try {
+        const fetchStart = Date.now();
         const res = await axios.get(`${BACKEND_URL}/api/current-track`, {
-          params: { username: lastFmUsername }
+          headers: { Authorization: `Bearer ${accessToken}` }
         });
+        const fetchEnd = Date.now();
 
         if (res.data && res.data.is_playing) {
-          // If track changed, fetch lyrics and reset progress
+          // Mathematically calculate the exact network latency (round-trip divided by 2)
+          const latency = Math.floor((fetchEnd - fetchStart) / 2);
+          setProgressMs(res.data.progress_ms + latency);
+
+          // If track changed, fetch lyrics
           if (!currentTrack || currentTrack.track_id !== res.data.track_id) {
             setCurrentTrack(res.data);
-            setProgressMs(0); // Reset timer for new track
             fetchLyrics(res.data.track_id, res.data.name, res.data.artist, res.data.duration_ms);
           }
-        } else {
-          // Stopped playing
-          setCurrentTrack(null);
         }
       } catch (error) {
+        if (error.response && error.response.status === 401) {
+          // Token expired, try to refresh
+          const refreshToken = localStorage.getItem('refresh_token');
+          if (refreshToken) {
+            try {
+              const refreshRes = await axios.post(`${BACKEND_URL}/auth/refresh`, { refresh_token: refreshToken });
+              if (refreshRes.data && refreshRes.data.access_token) {
+                setAccessToken(refreshRes.data.access_token);
+                localStorage.setItem('access_token', refreshRes.data.access_token);
+                return; // Will retry on next interval tick
+              }
+            } catch (refreshErr) {
+              console.error('Failed to refresh token:', refreshErr);
+              // Refresh failed, logout
+              setAccessToken(null);
+              localStorage.removeItem('access_token');
+              localStorage.removeItem('refresh_token');
+            }
+          } else {
+            // No refresh token, logout
+            setAccessToken(null);
+            localStorage.removeItem('access_token');
+          }
+        } else if (error.response && error.response.status === 403) {
+          setAuthError("Spotify Premium is required to sync lyrics. Free accounts are blocked by Spotify.");
+        }
         console.error('Error fetching current track:', error);
       }
     };
 
     fetchCurrentTrack();
-    const interval = setInterval(fetchCurrentTrack, 5000); // Last.fm limits, poll every 5s
+    const interval = setInterval(fetchCurrentTrack, 1000);
     return () => clearInterval(interval);
-  }, [lastFmUsername, currentTrack]);
+  }, [accessToken, currentTrack]);
 
   // Parse LRC into array
   const parseLRC = (lrcString) => {
@@ -165,13 +192,13 @@ function App() {
     }
   };
 
-  const adjustSync = (amount) => {
-    setProgressMs(prev => Math.max(0, prev + amount));
+  const handleLogin = () => {
+    window.location.href = `${BACKEND_URL}/auth/login`;
   };
 
   const handleTranslate = async () => {
     if (isTranslating) return;
-    
+
     // Toggle translation if already translated
     if (translatedLyrics) {
       setShowTranslation(!showTranslation);
@@ -189,7 +216,7 @@ function App() {
       }
 
       const res = await axios.post(`${BACKEND_URL}/api/translate`, { lyricsArray: lyricsArrayToTranslate });
-      
+
       if (res.data && res.data.translatedLyrics) {
         if (lyrics.length > 0) {
           setTranslatedLyrics(res.data.translatedLyrics);
@@ -221,22 +248,22 @@ function App() {
           </div>
         </header>
 
-        {!lastFmUsername ? (
+        {!accessToken ? (
           <main className="landing-page">
             <div className="landing-content">
               <h1 className="landing-title">
-                Sing along with <br /><span className="highlight">Last.fm sync.</span>
+                Sing along with <br /><span className="highlight">perfect precision.</span>
               </h1>
               <p className="landing-subtitle">
-                Enter your Last.fm username to experience beautifully synced lyrics. Powered by LRCLIB and cutting-edge Whisper AI for tracks that don't even have lyrics yet.
+                Connect your Spotify account to experience real-time, beautifully synced lyrics. Powered by LRCLIB and cutting-edge Whisper AI for tracks that don't even have lyrics yet.
               </p>
 
               <div className="landing-features">
                 <div className="feature-card">
                   <Sparkles className="feature-icon" size={24} />
                   <div className="feature-text">
-                    <h3>Last.fm Integration</h3>
-                    <p>Open for everyone. No Spotify Premium required.</p>
+                    <h3>Real-Time Sync</h3>
+                    <p>Perfectly timed lyrics synced directly to your Spotify playback.</p>
                   </div>
                 </div>
                 <div className="feature-card">
@@ -249,24 +276,15 @@ function App() {
                 <div className="feature-card">
                   <Smartphone className="feature-icon" size={24} />
                   <div className="feature-text">
-                    <h3>Manual Sync Control</h3>
-                    <p>Adjust timing manually to perfectly match the music.</p>
+                    <h3>Cross-Platform</h3>
+                    <p>Flawless experience on both desktop and mobile.</p>
                   </div>
                 </div>
               </div>
 
-              <form onSubmit={handleConnect} style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                <input 
-                  type="text" 
-                  placeholder="Last.fm Username" 
-                  value={inputUsername}
-                  onChange={(e) => setInputUsername(e.target.value)}
-                  style={{ flex: 1, padding: '15px 20px', borderRadius: '30px', border: 'none', background: 'rgba(255,255,255,0.1)', color: 'white', fontSize: '1.1rem', outline: 'none' }}
-                />
-                <button type="submit" className="login-btn" style={{ padding: '15px 30px' }}>
-                  Connect
-                </button>
-              </form>
+              <button className="login-btn large-login" onClick={handleLogin}>
+                Connect with Spotify
+              </button>
             </div>
             <div className="landing-visual">
               <div className="glow-orb primary"></div>
@@ -288,7 +306,12 @@ function App() {
         ) : (
           <main className="main-display">
             <div className="track-info">
-              {currentTrack ? (
+              {authError ? (
+                <div className="track-details">
+                  <div className="track-name" style={{ color: '#ff5f56', fontSize: '2rem' }}>Premium Required</div>
+                  <div className="track-artist">{authError}</div>
+                </div>
+              ) : currentTrack ? (
                 <>
                   <img
                     src={currentTrack.image_url}
@@ -298,16 +321,10 @@ function App() {
                   <div className="track-details">
                     <div className="track-name">{currentTrack.name}</div>
                     <div className="track-artist">{currentTrack.artist}</div>
-                    
-                    <div style={{ display: 'flex', gap: '10px', marginTop: '15px', alignItems: 'center' }}>
-                      <button onClick={() => adjustSync(-1000)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '8px 12px', borderRadius: '15px', cursor: 'pointer' }}>-1s</button>
-                      <button onClick={() => setProgressMs(0)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', padding: '8px 15px', borderRadius: '15px', cursor: 'pointer', fontWeight: 'bold' }}>Start Sync</button>
-                      <button onClick={() => adjustSync(1000)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '8px 12px', borderRadius: '15px', cursor: 'pointer' }}>+1s</button>
-                    </div>
                   </div>
-                  <div className="status-badge" onClick={handleDisconnect} style={{ cursor: 'pointer' }}>
+                  <div className="status-badge">
                     <div className="pulse"></div>
-                    {lastFmUsername} (Disconnect)
+                    Listening
                   </div>
                 </>
               ) : (

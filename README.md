@@ -4,6 +4,11 @@
 
 **Live synchronized lyrics for Spotify with multi-tiered automated fallback, Whisper AI audio-to-lyrics transcription, and instant LLaMA 3.3 translation.**
 
+<p align="center">
+  <strong>Live Application:</strong> <a href="https://lyricsync-live.vercel.app/">https://lyricsync-live.vercel.app/</a>
+</p>
+
+[![Live App](https://img.shields.io/badge/Live_App-lyricsync--live.vercel.app-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://lyricsync-live.vercel.app/)
 [![Repository](https://img.shields.io/badge/GitHub-trxshi747%2FLyrics-181717?style=for-the-badge&logo=github)](https://github.com/trxshi747/Lyrics)
 [![Spotify Web API](https://img.shields.io/badge/Spotify-1ED760?style=for-the-badge&logo=spotify&logoColor=white)](https://developer.spotify.com/)
 [![React 19](https://img.shields.io/badge/React_19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
@@ -15,6 +20,7 @@
 <br />
 
 <p align="center">
+  <a href="https://lyricsync-live.vercel.app/">Live App</a> •
   <a href="#overview">Overview</a> •
   <a href="#features">Features</a> •
   <a href="#system-architecture">Architecture</a> •
@@ -256,7 +262,7 @@ docker run -d \
 
 ### Deploying to Cloud Providers
 - **Backend**: Can be deployed to [Render](https://render.com), [Railway](https://railway.app), [Fly.io](https://fly.io), or any Docker-compatible VPS.
-- **Frontend**: Can be built (`npm run build`) and deployed statically to [Vercel](https://vercel.com), [Netlify](https://netlify.com), or [Cloudflare Pages](https://pages.cloudflare.com). Remember to set `VITE_BACKEND_URL` to your live backend domain.
+- **Frontend**: Built and deployed live on Vercel at [https://lyricsync-live.vercel.app/](https://lyricsync-live.vercel.app/). Can also be hosted on [Netlify](https://netlify.com) or [Cloudflare Pages](https://pages.cloudflare.com). Remember to set `VITE_BACKEND_URL` to your live backend domain.
 
 ---
 

@@ -25,16 +25,3 @@ backend/*.mp4
 backend/*.webm
 backend/*.mp3
 *.exe
-
-# AI Assistant & Agent configurations
-.agents/
-AGENTS.md
-CLAUDE.md
-GEMINI.md
-PROJECT_EXPLAINED.md
-directives/
-execution/
-.claude/
-.cursor/
-.windsurf/
-.gemini/

@@ -1,17 +1,40 @@
-.tmp/
+# Environment & Secrets
 .env
+*.env
 credentials.json
 token.json
+youtube_cookies.txt
+backend/youtube_cookies.txt
+
+# Temporary & Cache files
+.tmp/
 __pycache__/
 *.pyc
+.DS_Store
+Thumbs.db
 
+# Dependencies & Build artifacts
 node_modules/
 backend/node_modules/
 frontend/node_modules/
 frontend/dist/
+
+# Binaries & Media downloads
 backend/yt-dlp.exe
 backend/*.mp4
 backend/*.webm
 backend/*.mp3
 *.exe
-.DS_Store
+
+# AI Assistant & Agent configurations
+.agents/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+PROJECT_EXPLAINED.md
+directives/
+execution/
+.claude/
+.cursor/
+.windsurf/
+.gemini/

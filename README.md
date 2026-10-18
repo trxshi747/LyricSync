@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎵 Lyrics — Real-Time Synced Karaoke & AI Transcriber
+# Lyrics — Real-Time Synced Karaoke & AI Transcriber
 
 **Live synchronized lyrics for Spotify with multi-tiered automated fallback, Whisper AI audio-to-lyrics transcription, and instant LLaMA 3.3 translation.**
 
@@ -15,36 +15,38 @@
 <br />
 
 <p align="center">
-  <a href="#-features">Features</a> •
-  <a href="#-system-architecture">Architecture</a> •
-  <a href="#-quick-start">Quick Start</a> •
-  <a href="#-spotify-developer-configuration">Spotify Setup</a> •
-  <a href="#-environment-variables">Environment Variables</a> •
-  <a href="#-api-endpoints">API Reference</a> •
-  <a href="#-docker-deployment">Docker</a> •
-  <a href="#-troubleshooting">FAQ</a>
+  <a href="#overview">Overview</a> •
+  <a href="#features">Features</a> •
+  <a href="#system-architecture">Architecture</a> •
+  <a href="#tech-stack">Tech Stack</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#spotify-developer-configuration">Spotify Setup</a> •
+  <a href="#api-reference">API Reference</a> •
+  <a href="#docker-deployment">Docker</a> •
+  <a href="#repository-structure">Structure</a> •
+  <a href="#frequently-asked-questions-faq">FAQ</a>
 </p>
 
 </div>
 
 ---
 
-## 🌟 Overview
+## Overview
 
-**Lyrics** turns your Spotify listening experience into an interactive, real-time karaoke screen. Connecting directly to your Spotify account via OAuth 2.0, it automatically tracks whatever song is currently playing on any of your devices, synchronizes lyrics with millisecond precision, and smoothly scrolls through the song in a gorgeous frosted glass (glassmorphism) interface.
+**Lyrics** turns your Spotify listening experience into an interactive, real-time karaoke screen. Connecting directly to your Spotify account via OAuth 2.0, it automatically tracks whatever song is currently playing on any of your devices, synchronizes lyrics with millisecond precision, and smoothly scrolls through the song in a frosted glass (glassmorphism) interface.
 
 When timed lyrics are missing from standard databases, **Lyrics activates its autonomous AI fallback pipeline**: it pulls the audio from YouTube via `yt-dlp`, runs language detection with **LLaMA 3.3 (70B)**, transcribes timestamps and words using **OpenAI Whisper Large v3** on Groq Cloud, cleans vocal hallucinations, and formats an LRC file on the fly.
 
 ---
 
-## ✨ Features
+## Features
 
-- **⚡ Live Spotify Playback Synchronization**:
+- **Live Spotify Playback Synchronization**:
   - Automatically polls your active Spotify player state (`progress_ms`, `is_playing`, track metadata).
   - Dynamically calculates half-round-trip network latency ($RTT / 2$) to offset connection lag.
-  - Employs high-frequency (100ms) local linear interpolation to ensure buttery-smooth lyric animations between API ticks.
+  - Employs high-frequency (100ms) local linear interpolation to ensure smooth lyric animations between API ticks.
 
-- **🎯 3-Tier Multi-Source Lyrics Pipeline**:
+- **3-Tier Multi-Source Lyrics Pipeline**:
   1. **Tier 1 — LRCLIB API**: Instantly queries synchronized community LRC timestamps for thousands of songs.
   2. **Tier 2 — Genius API**: If timed lyrics aren't found, queries Genius for original lyrics text.
   3. **Tier 3 — Autonomous AI Audio Transcription & Sync**:
@@ -53,26 +55,26 @@ When timed lyrics are missing from standard databases, **Lyrics activates its au
      - Feeds Genius text as guidance prompts into **Whisper Large v3** (Groq) for precision alignment.
      - Filters Whisper AI hallucinations during silent/instrumental sections and marks `[INSTRUMENTAL]` breaks.
 
-- **🌐 Instant AI Lyric Translation**:
+- **Instant AI Lyric Translation**:
   - Powered by **LLaMA 3.3 70B Versatile** on Groq.
   - Translates foreign language lyrics line-by-line into English while preserving poetic structure and emotion.
   - Interactive toggle button in the player to switch between original and translated lyrics.
 
-- **🎨 Modern Glassmorphism & Karaoke UI**:
+- **Modern Glassmorphism & Karaoke UI**:
   - Dynamic ambient background glow extracted from the song's album art.
   - Center-focused auto-scrolling with Framer Motion transitions.
   - Interactive scroll override: user can freely scroll through lyrics, with a quick **Re-center (Crosshair)** button to jump back to live playback.
   - Visual status badges (`LRCLIB`, `Genius.com`, `AI Syncing in background`).
 
-- **🛡️ Spotify Developer Mode Helper**:
+- **Spotify Developer Mode Helper**:
   - Responsive in-app modal explaining Spotify's Developer Mode whitelist restrictions and how users can get access.
 
-- **📊 Vercel Analytics Built-in**:
+- **Vercel Analytics Built-in**:
   - Non-intrusive visitor and page view tracking on the frontend.
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 ```mermaid
 flowchart TD
@@ -109,7 +111,7 @@ flowchart TD
 
 ---
 
-## 💻 Tech Stack
+## Tech Stack
 
 | Domain | Technologies & Libraries |
 |---|---|
@@ -121,7 +123,7 @@ flowchart TD
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Prerequisites
 - **Node.js**: `v18.0.0` or higher ([Download](https://nodejs.org/))
@@ -137,7 +139,7 @@ cd Lyrics
 ```
 
 ### 3. Configure Environment Variables
-Create a `.env` file at the root of the project:
+Create a `.env` file at the root of the project (refer to `.env.example`):
 
 ```env
 # Spotify Developer Credentials
@@ -186,11 +188,11 @@ npm run dev
 # Vite will launch on http://localhost:5173
 ```
 
-Visit `http://localhost:5173` in your browser, log in with Spotify, and play a song on your Spotify app!
+Visit `http://localhost:5173` in your browser, log in with Spotify, and play a song on your Spotify app.
 
 ---
 
-## 🔑 Spotify Developer Configuration
+## Spotify Developer Configuration
 
 Because this application uses the Spotify Web API in **Development Mode**, follow these steps to configure your credentials:
 
@@ -208,7 +210,7 @@ Because this application uses the Spotify Web API in **Development Mode**, follo
 
 ---
 
-## 🌐 API Reference
+## API Reference
 
 ### Authentication Endpoints
 
@@ -229,7 +231,7 @@ Because this application uses the Spotify Web API in **Development Mode**, follo
 
 ---
 
-## 🐳 Docker Deployment
+## Docker Deployment
 
 The backend includes a production-ready `Dockerfile` based on Debian Bookworm Slim, pre-configured with:
 - Node.js 18
@@ -258,7 +260,7 @@ docker run -d \
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```text
 Lyrics/
@@ -289,7 +291,7 @@ Lyrics/
 
 ---
 
-## ❓ Frequently Asked Questions (FAQ)
+## Frequently Asked Questions (FAQ)
 
 <details>
 <summary><b>1. Why does Spotify login show "User not registered in Developer Dashboard"?</b></summary>
@@ -317,10 +319,10 @@ Cloud datacenter IPs are frequently rate-limited or blocked by YouTube. To bypas
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the [ISC License](LICENSE).
 
 <div align="center">
-  <sub>Built with ❤️ by <a href="https://github.com/trxshi747">trxshi747</a>. Star ⭐ the repository if you find it useful!</sub>
+  <sub>Built by <a href="https://github.com/trxshi747">trxshi747</a>.</sub>
 </div>

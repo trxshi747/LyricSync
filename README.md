@@ -61,10 +61,11 @@ When timed lyrics are missing from standard databases, **Lyrics activates its au
      - Feeds Genius text as guidance prompts into **Whisper Large v3** (Groq) for precision alignment.
      - Filters Whisper AI hallucinations during silent/instrumental sections and marks `[INSTRUMENTAL]` breaks.
 
-- **Instant AI Lyric Translation**:
-  - Powered by **LLaMA 3.3 70B Versatile** on Groq.
-  - Translates foreign language lyrics line-by-line into English while preserving poetic structure and emotion.
-  - Interactive toggle button in the player to switch between original and translated lyrics.
+- **Professional Context-Aware AI Translation (English and Arabic)**:
+  - Powered by **GPT-OSS 120B** on Groq.
+  - The model first analyses the whole song (narrator, addressee and gender, dialect, idioms, emotional arc), then translates line by line, keeping refrains consistent and the original timestamps intact.
+  - Arabic output is natural Modern Standard Arabic in a poetic register, displayed right-to-left.
+  - Language buttons in the player toggle between the original and each translation; results are cached per language.
 
 - **Modern Glassmorphism & Karaoke UI**:
   - Dynamic ambient background glow extracted from the song's album art.
@@ -233,7 +234,7 @@ Because this application uses the Spotify Web API in **Development Mode**, follo
 | `GET` | `/api/current-track` | Header: `Authorization: Bearer <token>` | Returns live playing track metadata, progress in ms, and album art. |
 | `GET` | `/api/lyrics` | `track_id`, `track_name`, `artist_name`, `duration_ms` | Resolves lyrics via LRCLIB, Genius, or triggers an AI job. |
 | `GET` | `/api/lyrics/job` | `track_id` | Checks progress of an in-progress background AI transcription job. |
-| `POST` | `/api/translate` | Body: `{ lyricsArray: [...] }` | Translates array of timestamped lines to English using LLaMA 3.3. |
+| `POST` | `/api/translate` | Body: `{ lyricsArray: [...], targetLang: 'en' \| 'ar', trackName?, artistName? }` | Context-aware, line-by-line translation to English or Arabic (right-to-left in the UI) using `openai/gpt-oss-120b` on Groq. |
 
 ---
 

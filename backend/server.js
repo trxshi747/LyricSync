@@ -144,29 +144,66 @@ app.get('/api/lyrics/job', (req, res) => {
   res.json(job);
 });
 
+// llama-3.3-70b-versatile is no longer served by Groq; gpt-oss-120b handles Arabic well
+const TRANSLATION_MODEL = 'openai/gpt-oss-120b';
+const TRANSLATION_LANGUAGES = { en: 'English', ar: 'Arabic' };
+
+// Extra style rules per target language, appended to the shared translator brief
+const TRANSLATION_STYLE_NOTES = {
+  en: "Use natural, idiomatic English that a native speaker would sing or say.",
+  ar: "Write natural, fluent Modern Standard Arabic in a poetic register, never word-for-word. Use Arabic punctuation (، ؟). Make grammatical gender and number agree with the real narrator and addressee identified in your context analysis. Do not add diacritics (tashkeel) unless needed to avoid ambiguity. Use Arabic script only, except for names and brand names you keep as-is."
+};
+
+function buildTranslationPrompt(targetLang, trackName, artistName) {
+  const languageName = TRANSLATION_LANGUAGES[targetLang];
+  const songInfo = trackName ? `The song is "${trackName}"${artistName ? ` by ${artistName}` : ''}. ` : '';
+
+  return `You are a professional literary translator specialised in song lyrics. ${songInfo}You will receive the full lyrics, one line per row, each prefixed by 'id::'. Blank rows separate stanzas.
+
+First, silently analyse the whole song: the narrator, who is addressed (and their gender), the emotional arc, the source language or dialect, slang, idioms, metaphors and cultural references. Then translate every line into ${languageName}, faithful to that analysis.
+
+Rules:
+- Translate meaning, tone and imagery, not words. Render idioms and slang with an equivalent expression in ${languageName}; never translate them literally.
+- Keep the translation consistent across the song: the same narrator and addressee, and the same rendering for repeated lines and refrains.
+- Keep exactly one translated line per input id, in the same order. Never merge, split, skip or reorder lines.
+- Keep proper names, ad-libs and onomatopoeia (yeah, oh, la la) as they are.
+- If a line is already in ${languageName}, return it unchanged.
+- ${TRANSLATION_STYLE_NOTES[targetLang]}
+
+Return only a valid JSON object with two keys: 'context' (a one or two sentence summary of your analysis) followed by 'translations' (an array of objects, each with a numeric 'id' and a string 'text' holding the translated line).`;
+}
+
 app.post('/api/translate', async (req, res) => {
-  const { lyricsArray } = req.body;
+  const { lyricsArray, targetLang = 'en', trackName, artistName } = req.body;
   if (!lyricsArray || !Array.isArray(lyricsArray) || lyricsArray.length === 0) {
     return res.status(400).json({ error: 'Missing or empty lyricsArray' });
   }
+  if (!TRANSLATION_LANGUAGES[targetLang]) {
+    return res.status(400).json({ error: `Unsupported targetLang. Use one of: ${Object.keys(TRANSLATION_LANGUAGES).join(', ')}` });
+  }
 
   try {
-    const textLines = lyricsArray.map((l, i) => `${i}::${l.text}`).join('\n');
+    // Send blank rows for empty/instrumental lines so the model sees the stanza structure without translating them
+    const textLines = lyricsArray
+      .map((l, i) => (l.text && l.text.trim() && l.text !== '[INSTRUMENTAL]' ? `${i}::${l.text}` : ''))
+      .join('\n');
 
     const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: 'llama-3.3-70b-versatile',
+      model: TRANSLATION_MODEL,
       response_format: { type: "json_object" },
+      reasoning_effort: 'low', // Reasoning tokens count toward max_tokens
       messages: [
         {
           role: "system",
-          content: "You are a professional translator. I will provide song lyrics where each line is prefixed by 'id::'. Translate the text into English, preserving the poetic structure, meaning, and tone. Do NOT translate proper names. You MUST return your response as a valid JSON object with a single key 'translations' whose value is an array of objects. Each object must have an 'id' (number) and 'text' (string) containing the translated line."
+          content: buildTranslationPrompt(targetLang, trackName, artistName)
         },
         {
           role: "user",
           content: textLines
         }
       ],
-      temperature: 0.3
+      temperature: 0.3,
+      max_tokens: 8192 // Arabic text uses many tokens per line
     }, {
       headers: {
         'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
@@ -184,12 +221,15 @@ app.post('/api/translate', async (req, res) => {
     for (const item of translations) {
       const index = parseInt(item.id);
       const translatedText = item.text;
-      if (!isNaN(index) && translatedArray[index]) {
-        translatedArray[index] = { ...translatedArray[index], text: translatedText };
+      const original = translatedArray[index];
+      // Only accept text for lines we actually sent; blank and instrumental lines stay untouched
+      const wasSent = original && original.text && original.text.trim() && original.text !== '[INSTRUMENTAL]';
+      if (!isNaN(index) && wasSent && typeof translatedText === 'string' && translatedText.trim()) {
+        translatedArray[index] = { ...original, text: translatedText.trim() };
       }
     }
 
-    res.json({ translatedLyrics: translatedArray });
+    res.json({ translatedLyrics: translatedArray, targetLang });
   } catch (error) {
     console.error('Error translating lyrics:', error.response?.data || error.message);
     res.status(500).json({ error: 'Translation failed' });

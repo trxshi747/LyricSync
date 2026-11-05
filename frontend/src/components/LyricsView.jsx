@@ -8,9 +8,22 @@ const SingleMusicNote = () => (
   </svg>
 );
 
-const LyricsView = ({ lyrics, unsyncedLyrics, progressMs, isLoading, isAiFallback, onTranslate, isTranslating, showTranslation, canTranslate }) => {
+const TRANSLATE_OPTIONS = [
+  { lang: 'en', label: 'English', title: 'Translate to English' },
+  { lang: 'ar', label: 'العربية', title: 'Translate to Arabic' }
+];
+
+const LyricsView = ({ lyrics, unsyncedLyrics, progressMs, isLoading, isAiFallback, onTranslate, isTranslating, activeLang, canTranslate }) => {
   const containerRef = useRef(null);
   const [isAutoScroll, setIsAutoScroll] = useState(true);
+  const [pendingLang, setPendingLang] = useState(null);
+  const isRtl = activeLang === 'ar';
+  const directionProps = isRtl ? { dir: 'rtl', lang: 'ar' } : {};
+
+  const handleTranslateClick = (lang) => {
+    setPendingLang(lang);
+    onTranslate(lang);
+  };
 
   // Find the active lyric index based on current progress
   let activeIndex = -1;
@@ -62,7 +75,7 @@ const LyricsView = ({ lyrics, unsyncedLyrics, progressMs, isLoading, isAiFallbac
     if (unsyncedLyrics) {
       const lines = unsyncedLyrics.split('\n');
       return (
-        <div className="lyrics-container unsynced">
+        <div className={`lyrics-container unsynced${isRtl ? ' rtl' : ''}`} {...directionProps}>
           <div className="source-badge syncing">
             Source: Genius.com (AI Syncing in background <span className="inline-spinner"></span>)
           </div>
@@ -85,7 +98,8 @@ const LyricsView = ({ lyrics, unsyncedLyrics, progressMs, isLoading, isAiFallbac
   return (
     <div style={{ position: 'relative', height: '100%' }}>
       <div 
-        className="lyrics-container" 
+        className={`lyrics-container${isRtl ? ' rtl' : ''}`}
+        {...directionProps}
         ref={containerRef}
         onWheel={handleUserInteraction}
         onTouchStart={handleUserInteraction}
@@ -114,21 +128,22 @@ const LyricsView = ({ lyrics, unsyncedLyrics, progressMs, isLoading, isAiFallbac
       </div>
 
       <div className="lyrics-actions">
-        {canTranslate && (
-          <button 
-            className={`action-btn translate-btn ${showTranslation ? 'active' : ''}`}
-            onClick={onTranslate}
+        {canTranslate && TRANSLATE_OPTIONS.map(({ lang, label, title }) => (
+          <button
+            key={lang}
+            className={`action-btn translate-btn ${activeLang === lang ? 'active' : ''}`}
+            onClick={() => handleTranslateClick(lang)}
             disabled={isTranslating}
-            title="Translate to English"
+            title={activeLang === lang ? 'Show original lyrics' : title}
           >
-            {isTranslating ? (
+            {isTranslating && pendingLang === lang ? (
               <Loader2 size={20} className="spinner" />
             ) : (
               <Languages size={20} />
             )}
-            <span>{showTranslation ? 'English' : 'Translate'}</span>
+            <span>{label}</span>
           </button>
-        )}
+        ))}
         
         {!isAutoScroll && lyrics && lyrics.length > 0 && (
           <button 

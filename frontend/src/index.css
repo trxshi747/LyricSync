@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&family=Outfit:wght@400;600;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&family=Outfit:wght@400;600;800&family=Cairo:wght@600;800&display=swap');
 
 :root {
   --bg-color-main: #0a0a0a;
@@ -242,6 +242,18 @@ body {
 .lyric-line.passed {
   color: rgba(255, 255, 255, 0.4);
   transform: scale(1);
+}
+
+/* Arabic translation: right-to-left layout with a font that supports Arabic */
+.lyrics-container.rtl {
+  text-align: right;
+}
+
+.lyrics-container.rtl .lyric-line {
+  font-family: 'Cairo', 'Outfit', sans-serif;
+  letter-spacing: 0; /* Letter spacing breaks Arabic letter joining */
+  line-height: 1.6;
+  transform-origin: right center;
 }
 
 .lyrics-actions {
@@ -701,6 +713,14 @@ body {
   .lyric-line {
     font-size: 1.4rem;
     margin-bottom: 1.5rem;
+    transform-origin: center;
+  }
+
+  .lyrics-container.rtl {
+    text-align: center;
+  }
+
+  .lyrics-container.rtl .lyric-line {
     transform-origin: center;
   }
 

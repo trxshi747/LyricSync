@@ -17,9 +17,10 @@ function App() {
   const [showWhitelistModal, setShowWhitelistModal] = useState(true);
 
   // Translation state
-  const [translatedLyrics, setTranslatedLyrics] = useState(null);
+  const [translations, setTranslations] = useState({}); // Cached per target language, e.g. { en: [...], ar: [...] }
   const [isTranslating, setIsTranslating] = useState(false);
-  const [showTranslation, setShowTranslation] = useState(false);
+  const [activeLang, setActiveLang] = useState(null); // null = original lyrics
+  const translatedLyrics = activeLang ? translations[activeLang] : null;
 
   const [progressMs, setProgressMs] = useState(0);
   const pollIntervalRef = useRef(null);
@@ -140,8 +141,8 @@ function App() {
     setLyrics([]);
     setUnsyncedLyrics(null);
     setIsAiFallback(false);
-    setTranslatedLyrics(null);
-    setShowTranslation(false);
+    setTranslations({});
+    setActiveLang(null);
 
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
 
@@ -174,6 +175,9 @@ function App() {
               if (jobRes.data && jobRes.data.status === 'completed') {
                 setLyrics(parseLRC(jobRes.data.lyrics));
                 setUnsyncedLyrics(null);
+                // Any translation made from the plain Genius text no longer matches the synced lines
+                setTranslations({});
+                setActiveLang(null);
                 setIsAiFallback(true);
                 setIsLoadingLyrics(false);
                 clearInterval(pollIntervalRef.current);
@@ -198,12 +202,18 @@ function App() {
     window.location.href = `${BACKEND_URL}/auth/login`;
   };
 
-  const handleTranslate = async () => {
+  const handleTranslate = async (lang) => {
     if (isTranslating) return;
 
-    // Toggle translation if already translated
-    if (translatedLyrics) {
-      setShowTranslation(!showTranslation);
+    // Clicking the active language goes back to the original lyrics
+    if (activeLang === lang) {
+      setActiveLang(null);
+      return;
+    }
+
+    // Reuse a translation we already fetched for this language
+    if (translations[lang]) {
+      setActiveLang(lang);
       return;
     }
 
@@ -217,16 +227,20 @@ function App() {
         lyricsArrayToTranslate = unsyncedLyrics.split('\n').map((text, i) => ({ timeMs: i, text }));
       }
 
-      const res = await axios.post(`${BACKEND_URL}/api/translate`, { lyricsArray: lyricsArrayToTranslate });
+      const res = await axios.post(`${BACKEND_URL}/api/translate`, {
+        lyricsArray: lyricsArrayToTranslate,
+        targetLang: lang,
+        trackName: currentTrack?.name,
+        artistName: currentTrack?.artist
+      });
 
       if (res.data && res.data.translatedLyrics) {
-        if (lyrics.length > 0) {
-          setTranslatedLyrics(res.data.translatedLyrics);
-        } else if (unsyncedLyrics) {
-          // Join back to string
-          setTranslatedLyrics(res.data.translatedLyrics.map(l => l.text).join('\n'));
-        }
-        setShowTranslation(true);
+        // Unsynced lyrics are joined back into a plain string
+        const result = lyrics.length > 0
+          ? res.data.translatedLyrics
+          : res.data.translatedLyrics.map(l => l.text).join('\n');
+        setTranslations(prev => ({ ...prev, [lang]: result }));
+        setActiveLang(lang);
       }
     } catch (error) {
       console.error('Translation error:', error);
@@ -379,14 +393,14 @@ function App() {
             <div style={{ flex: 1, height: '100%', minHeight: 0, position: 'relative' }}>
               {currentTrack && (
                 <LyricsView
-                  lyrics={showTranslation && Array.isArray(translatedLyrics) ? translatedLyrics : lyrics}
-                  unsyncedLyrics={showTranslation && typeof translatedLyrics === 'string' ? translatedLyrics : unsyncedLyrics}
+                  lyrics={Array.isArray(translatedLyrics) ? translatedLyrics : lyrics}
+                  unsyncedLyrics={typeof translatedLyrics === 'string' ? translatedLyrics : unsyncedLyrics}
                   progressMs={progressMs}
                   isLoading={isLoadingLyrics}
                   isAiFallback={isAiFallback}
                   onTranslate={handleTranslate}
                   isTranslating={isTranslating}
-                  showTranslation={showTranslation}
+                  activeLang={activeLang}
                   canTranslate={(lyrics.length > 0 || unsyncedLyrics)}
                 />
               )}

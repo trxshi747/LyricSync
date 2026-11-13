@@ -22,6 +22,13 @@ function App() {
   const [activeLang, setActiveLang] = useState(null); // null = original lyrics
   const translatedLyrics = activeLang ? translations[activeLang] : null;
 
+  // Refs let long-running callbacks (polling, async translation) see the latest values instead of stale closures
+  const activeLangRef = useRef(null);
+  activeLangRef.current = activeLang;
+  const trackIdRef = useRef(null);
+  const lyricsRef = useRef([]);
+  lyricsRef.current = lyrics;
+
   const [progressMs, setProgressMs] = useState(0);
   const pollIntervalRef = useRef(null);
 
@@ -67,8 +74,9 @@ function App() {
           const latency = Math.floor((fetchEnd - fetchStart) / 2);
           setProgressMs(res.data.progress_ms + latency);
 
-          // If track changed, fetch lyrics
-          if (!currentTrack || currentTrack.track_id !== res.data.track_id) {
+          // If track changed, fetch lyrics. The ref is updated synchronously, so slow overlapping
+          // requests can't trigger a second fetch (which would also reset the translation)
+          if (trackIdRef.current !== res.data.track_id) {
             setCurrentTrack(res.data);
             fetchLyrics(res.data.track_id, res.data.name, res.data.artist, res.data.duration_ms);
           }
@@ -136,7 +144,18 @@ function App() {
   };
 
   // Fetch lyrics from backend
+  const requestTranslation = async (lang, lines, trackName, artistName) => {
+    const res = await axios.post(`${BACKEND_URL}/api/translate`, {
+      lyricsArray: lines,
+      targetLang: lang,
+      trackName,
+      artistName
+    });
+    return res.data?.translatedLyrics || null;
+  };
+
   const fetchLyrics = async (trackId, trackName, artistName, durationMs) => {
+    trackIdRef.current = trackId;
     setIsLoadingLyrics(true);
     setLyrics([]);
     setUnsyncedLyrics(null);
@@ -173,14 +192,32 @@ function App() {
             try {
               const jobRes = await axios.get(`${BACKEND_URL}/api/lyrics/job?track_id=${jobIdToPoll}`);
               if (jobRes.data && jobRes.data.status === 'completed') {
-                setLyrics(parseLRC(jobRes.data.lyrics));
-                setUnsyncedLyrics(null);
-                // Any translation made from the plain Genius text no longer matches the synced lines
-                setTranslations({});
-                setActiveLang(null);
-                setIsAiFallback(true);
-                setIsLoadingLyrics(false);
                 clearInterval(pollIntervalRef.current);
+                const syncedLyrics = parseLRC(jobRes.data.lyrics);
+                const lang = activeLangRef.current;
+
+                // A translation of the plain Genius text doesn't match the synced lines, so it is dropped
+                const showSynced = (translated) => {
+                  if (trackIdRef.current !== trackId) return; // Track changed meanwhile
+                  setLyrics(syncedLyrics);
+                  setUnsyncedLyrics(null);
+                  setTranslations(translated ? { [lang]: translated } : {});
+                  setActiveLang(translated ? lang : null);
+                  setIsAiFallback(true);
+                  setIsLoadingLyrics(false);
+                };
+
+                if (lang) {
+                  // Translate the synced lines before swapping, so the view never flashes back to the source language
+                  requestTranslation(lang, syncedLyrics, trackName, artistName)
+                    .then(showSynced)
+                    .catch((e) => {
+                      console.error('Translation of synced lyrics failed:', e);
+                      showSynced(null);
+                    });
+                } else {
+                  showSynced(null);
+                }
               } else if (jobRes.data && jobRes.data.status === 'failed') {
                 console.error('Background AI job failed:', jobRes.data.error);
                 setIsLoadingLyrics(false);
@@ -218,6 +255,8 @@ function App() {
     }
 
     setIsTranslating(true);
+    const trackId = trackIdRef.current;
+    const sourceLyrics = lyrics;
     try {
       let lyricsArrayToTranslate = [];
       if (lyrics.length > 0) {
@@ -227,18 +266,12 @@ function App() {
         lyricsArrayToTranslate = unsyncedLyrics.split('\n').map((text, i) => ({ timeMs: i, text }));
       }
 
-      const res = await axios.post(`${BACKEND_URL}/api/translate`, {
-        lyricsArray: lyricsArrayToTranslate,
-        targetLang: lang,
-        trackName: currentTrack?.name,
-        artistName: currentTrack?.artist
-      });
+      const translated = await requestTranslation(lang, lyricsArrayToTranslate, currentTrack?.name, currentTrack?.artist);
 
-      if (res.data && res.data.translatedLyrics) {
+      // Discard the result if the track or the lyrics (plain text replaced by synced lines) changed meanwhile
+      if (translated && trackIdRef.current === trackId && lyricsRef.current === sourceLyrics) {
         // Unsynced lyrics are joined back into a plain string
-        const result = lyrics.length > 0
-          ? res.data.translatedLyrics
-          : res.data.translatedLyrics.map(l => l.text).join('\n');
+        const result = lyrics.length > 0 ? translated : translated.map(l => l.text).join('\n');
         setTranslations(prev => ({ ...prev, [lang]: result }));
         setActiveLang(lang);
       }

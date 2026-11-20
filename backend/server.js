@@ -7,6 +7,7 @@ const Genius = require('genius-lyrics');
 const crypto = require('crypto');
 const { downloadAudio, transcribeAudioFile, isTranscriptionConfigured } = require('./transcriber');
 const cache = require('./cache');
+const { findLrclibLyrics } = require('./lrclib');
 
 const DAY_S = 24 * 60 * 60;
 const LRCLIB_CACHE_TTL_S = 14 * DAY_S;
@@ -331,28 +332,21 @@ app.get('/api/lyrics', async (req, res) => {
     return res.json({ source: 'lrclib', lyrics: cachedLyrics, cached: true });
   }
 
-  // 1. Try LRCLIB API first
-  try {
-    const lrclibUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(track_name)}&artist_name=${encodeURIComponent(artist_name)}&duration=${durationSeconds}`;
+  // 1. Try LRCLIB first: exact lookup, then a strict fuzzy search (set LRCLIB_FUZZY_SEARCH=false to turn the fuzzy step off)
+  console.log(`Checking LRCLIB: ${track_name} by ${artist_name} (${durationSeconds}s)`);
+  const lrclibMatch = await findLrclibLyrics(track_name, artist_name, durationSeconds, {
+    fuzzy: process.env.LRCLIB_FUZZY_SEARCH !== 'false'
+  });
 
-    console.log(`Checking LRCLIB: ${lrclibUrl}`);
-    const lrcRes = await axios.get(lrclibUrl);
-
-    if (lrcRes.data && lrcRes.data.syncedLyrics) {
-      console.log(`Found synced lyrics for ${track_name} on LRCLIB.`);
-      cache.set(lyricsCacheKey(track_id), lrcRes.data.syncedLyrics, LRCLIB_CACHE_TTL_S);
-      return res.json({
-        source: 'lrclib',
-        lyrics: lrcRes.data.syncedLyrics
-      });
-    }
-  } catch (err) {
-    if (err.response && err.response.status === 404) {
-      console.log(`No lyrics found on LRCLIB for ${track_name}. Falling back to AI...`);
-    } else {
-      console.error(`LRCLIB error: ${err.message}`);
-    }
+  if (lrclibMatch) {
+    console.log(`Found synced lyrics for ${track_name} on LRCLIB (${lrclibMatch.matchType} match).`);
+    cache.set(lyricsCacheKey(track_id), lrclibMatch.lyrics, LRCLIB_CACHE_TTL_S);
+    return res.json({
+      source: 'lrclib',
+      lyrics: lrclibMatch.lyrics
+    });
   }
+  console.log(`No lyrics found on LRCLIB for ${track_name}. Falling back to AI...`);
 
   // 2. No synced lyrics: start the Genius lookup (plain text) and the AI job together.
   // The job begins downloading audio right away and uses the Genius text later as a guide for Whisper.

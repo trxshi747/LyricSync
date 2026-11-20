@@ -6,10 +6,16 @@ const path = require('path');
 const axios = require('axios');
 const FormData = require('form-data');
 
-// Audio download limits: a failed search should cost seconds, not minutes
-const DOWNLOAD_ATTEMPT_TIMEOUT_MS = 40000;
-const DOWNLOAD_TOTAL_BUDGET_MS = 100000;
+// Audio download limits. The free Render instance has a tiny CPU share and yt-dlp (with the Deno challenge
+// solver) can need more than a minute there, so the per-attempt limit must stay generous: too tight and
+// every attempt gets killed, which is worse than waiting.
+const DOWNLOAD_ATTEMPT_TIMEOUT_MS = 90000;
+const DOWNLOAD_TOTAL_BUDGET_MS = 240000;
 const STALE_TMP_FILE_MS = 30 * 60 * 1000;
+
+// yt-dlp leaves partial/temporary files (.part, .ytdl, .f251.webm) when it is killed mid-download.
+// They must never be mistaken for the finished audio.
+const isPartialDownload = (fileName) => /\.(part|ytdl|temp)$|\.f\d+\./.test(fileName);
 
 // Helper to convert Whisper verbose_json segments to LRC format
 function verboseJsonToLrc(segments) {
@@ -178,6 +184,7 @@ async function downloadAudio(searchQuery, durationSeconds) {
         break;
       }
 
+      const attemptTimeoutMs = Math.min(DOWNLOAD_ATTEMPT_TIMEOUT_MS, remainingMs);
       console.log(`Attempting native download via: ${provider} (Target length: ${durationSeconds}s)`);
       try {
         const { stdout, stderr } = await execFilePromise(ytdlpPath, [
@@ -188,12 +195,12 @@ async function downloadAudio(searchQuery, durationSeconds) {
           ...extraArgs,
           '-o', outputTemplate,
           provider
-        ], { timeout: Math.min(DOWNLOAD_ATTEMPT_TIMEOUT_MS, remainingMs) });
+        ], { timeout: attemptTimeoutMs });
         console.log(`yt-dlp stdout:`, stdout);
         if (stderr) console.log(`yt-dlp stderr:`, stderr);
 
         const files = fs.readdirSync(tmpDir);
-        const downloadedFileName = files.find(f => f.startsWith(`audio_${timestamp}.`));
+        const downloadedFileName = files.find(f => f.startsWith(`audio_${timestamp}.`) && !isPartialDownload(f));
         if (downloadedFileName) {
           actualFilePath = path.join(tmpDir, downloadedFileName);
           console.log(`Successfully downloaded audio.`);
@@ -203,8 +210,9 @@ async function downloadAudio(searchQuery, durationSeconds) {
       } catch (err) {
         console.error(`yt-dlp crash for ${provider}:`, err.message || err);
         console.log(`Download failed for ${provider}. Trying next...`);
-        const reason = err.killed ? `timed out after ${Math.round((err.timeout || 0) / 1000)}s` : lastLine(err.stderr || err.message);
+        const reason = err.killed ? `timed out after ${Math.round(attemptTimeoutMs / 1000)}s` : lastLine(err.stderr || err.message);
         attemptErrors.push(`${provider}: ${reason}`);
+        removeAttemptFiles(tmpDir, timestamp); // A killed attempt leaves partial files behind
       }
     }
   } finally {
@@ -221,6 +229,17 @@ async function downloadAudio(searchQuery, durationSeconds) {
   return actualFilePath;
 }
 
+// Deletes everything a failed download attempt left in .tmp for this job
+function removeAttemptFiles(tmpDir, timestamp) {
+  try {
+    for (const file of fs.readdirSync(tmpDir)) {
+      if (file.startsWith(`audio_${timestamp}.`)) {
+        try { fs.unlinkSync(path.join(tmpDir, file)); } catch (e) { }
+      }
+    }
+  } catch (e) { }
+}
+
 // Last non-empty line of a yt-dlp output, shortened: usually the actual ERROR message
 function lastLine(text) {
   const lines = String(text || '').split('\n').map((l) => l.trim()).filter(Boolean);
@@ -231,7 +250,11 @@ function lastLine(text) {
 // Transcribes a downloaded audio file with Whisper and returns the LRC text. Deletes the file when done.
 async function transcribeAudioFile(actualFilePath, searchQuery, promptText = null) {
   try {
-    console.log(`Uploading audio to Groq Whisper API for transcription...`);
+    const audioSize = fs.statSync(actualFilePath).size;
+    if (audioSize < 10 * 1024) {
+      throw new Error(`Downloaded audio is too small to be valid (${audioSize} bytes), likely an incomplete download`);
+    }
+    console.log(`Uploading audio (${audioSize} bytes) to Groq Whisper API for transcription...`);
 
     // Detect primary language to prevent Whisper from locking onto intro languages or hallucinating
     const detectedLang = await detectLanguage(searchQuery, promptText);
@@ -257,14 +280,22 @@ async function transcribeAudioFile(actualFilePath, searchQuery, promptText = nul
       console.log(`Attached transcription prompt from Genius to force precise alignment.`);
     }
 
-    const response = await axios.post('https://api.groq.com/openai/v1/audio/transcriptions', formData, {
-      headers: {
-        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-        ...formData.getHeaders()
-      },
-      maxBodyLength: Infinity,
-      maxContentLength: Infinity
-    });
+    let response;
+    try {
+      response = await axios.post('https://api.groq.com/openai/v1/audio/transcriptions', formData, {
+        headers: {
+          'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+          ...formData.getHeaders()
+        },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity
+      });
+    } catch (err) {
+      // Keep Groq's own explanation (and the file size) so the job error says what was actually wrong
+      const status = err.response?.status;
+      const detail = err.response?.data?.error?.message || err.message;
+      throw new Error(`Whisper request failed${status ? ` (${status})` : ''}: ${detail} [audio ${audioSize} bytes${promptText ? ', with prompt' : ''}]`);
+    }
 
     console.log(`Received verbose_json from Groq, converting to LRC...`);
     return verboseJsonToLrc(response.data.segments);

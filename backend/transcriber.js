@@ -168,6 +168,7 @@ async function downloadAudio(searchQuery, durationSeconds) {
 
   const deadline = Date.now() + DOWNLOAD_TOTAL_BUDGET_MS;
   let actualFilePath = null;
+  const attemptErrors = []; // Why each attempt failed, surfaced in the job error to make failures diagnosable
 
   try {
     for (const provider of searchProviders) {
@@ -198,9 +199,12 @@ async function downloadAudio(searchQuery, durationSeconds) {
           console.log(`Successfully downloaded audio.`);
           break; // Break the loop on success
         }
+        attemptErrors.push(`${provider}: no audio produced (${lastLine(`${stdout}\n${stderr}`)})`);
       } catch (err) {
         console.error(`yt-dlp crash for ${provider}:`, err.message || err);
         console.log(`Download failed for ${provider}. Trying next...`);
+        const reason = err.killed ? `timed out after ${Math.round((err.timeout || 0) / 1000)}s` : lastLine(err.stderr || err.message);
+        attemptErrors.push(`${provider}: ${reason}`);
       }
     }
   } finally {
@@ -211,9 +215,17 @@ async function downloadAudio(searchQuery, durationSeconds) {
   }
 
   if (!actualFilePath) {
-    throw new Error("Downloaded audio file not found in .tmp directory. All search providers failed.");
+    const details = attemptErrors.join(' | ').slice(0, 700);
+    throw new Error(`Downloaded audio file not found in .tmp directory. All search providers failed.${details ? ` Details: ${details}` : ''}`);
   }
   return actualFilePath;
+}
+
+// Last non-empty line of a yt-dlp output, shortened: usually the actual ERROR message
+function lastLine(text) {
+  const lines = String(text || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const errorLine = [...lines].reverse().find((l) => l.startsWith('ERROR')) || lines[lines.length - 1] || 'no output';
+  return errorLine.slice(0, 160);
 }
 
 // Transcribes a downloaded audio file with Whisper and returns the LRC text. Deletes the file when done.

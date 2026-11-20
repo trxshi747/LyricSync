@@ -160,40 +160,90 @@ app.get('/health', (req, res) => {
 
 // --- API Endpoints ---
 
+const CURRENT_TRACK_COALESCE_MS = 800;
+const DEFAULT_RETRY_AFTER_S = 5;
+const MAX_TRACKED_TOKENS = 200;
+const currentTrackRequests = new Map(); // token -> { promise, at }: requests made within the same moment share one Spotify call
+const rateLimitedUntil = new Map(); // token -> timestamp: Spotify asked us to wait, so don't call it again before then
+
+// Asks Spotify what is playing and returns { status, body } for the HTTP response. Never throws.
+async function loadCurrentTrack(token) {
+  const api = new SpotifyWebApi({ accessToken: token });
+
+  try {
+    const data = await api.getMyCurrentPlayingTrack();
+    const track = data.body && data.body.item;
+    if (!track) {
+      return { status: 200, body: { is_playing: false } };
+    }
+
+    const artist = track.artists?.[0]?.name || 'Unknown artist';
+    return {
+      status: 200,
+      body: {
+        is_playing: data.body.is_playing,
+        progress_ms: data.body.progress_ms,
+        // Local files have no Spotify id; build a stable one so the track is still detected
+        track_id: track.id || `local:${track.name}:${artist}:${track.duration_ms}`,
+        name: track.name,
+        artist,
+        album: track.album?.name || '',
+        duration_ms: track.duration_ms,
+        image_url: track.album?.images?.length > 0 ? track.album.images[0].url : null,
+      }
+    };
+  } catch (error) {
+    if (error.statusCode === 401) {
+      return { status: 401, body: { error: 'Token expired' } };
+    }
+    if (error.statusCode === 403) {
+      return { status: 403, body: { error: 'Premium required' } };
+    }
+    if (error.statusCode === 429) {
+      const retryAfter = Number(error.headers?.['retry-after']) || DEFAULT_RETRY_AFTER_S;
+      rateLimitedUntil.set(token, Date.now() + retryAfter * 1000);
+      if (rateLimitedUntil.size > MAX_TRACKED_TOKENS) {
+        rateLimitedUntil.delete(rateLimitedUntil.keys().next().value);
+      }
+      console.warn(`Spotify rate limit hit, backing off for ${retryAfter}s.`);
+      return { status: 429, body: { error: 'Rate limited by Spotify', retry_after: retryAfter } };
+    }
+    console.error('Error getting current track:', error.statusCode || '', error.message);
+    return { status: 500, body: { error: 'Failed to fetch current track' } };
+  }
+}
+
+function getCurrentTrack(token) {
+  // While Spotify asks us to wait, answer without calling it: hammering it only prolongs the block
+  const blockedUntil = rateLimitedUntil.get(token);
+  if (blockedUntil) {
+    if (blockedUntil > Date.now()) {
+      const retryAfter = Math.ceil((blockedUntil - Date.now()) / 1000);
+      return Promise.resolve({ status: 429, body: { error: 'Rate limited by Spotify', retry_after: retryAfter } });
+    }
+    rateLimitedUntil.delete(token);
+  }
+
+  // Several tabs or overlapping requests for the same user share a single Spotify call
+  const recent = currentTrackRequests.get(token);
+  if (recent && Date.now() - recent.at < CURRENT_TRACK_COALESCE_MS) return recent.promise;
+
+  const promise = loadCurrentTrack(token);
+  currentTrackRequests.set(token, { promise, at: Date.now() });
+  if (currentTrackRequests.size > MAX_TRACKED_TOKENS) {
+    currentTrackRequests.delete(currentTrackRequests.keys().next().value); // Drop the oldest entry
+  }
+  return promise;
+}
+
 app.get('/api/current-track', async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: 'No token provided' });
 
   const token = authHeader.split(' ')[1];
-  const tempApi = new SpotifyWebApi({ accessToken: token });
-
-  try {
-    const data = await tempApi.getMyCurrentPlayingTrack();
-    if (!data.body || !data.body.item) {
-      return res.json({ is_playing: false });
-    }
-
-    const track = data.body.item;
-    res.json({
-      is_playing: data.body.is_playing,
-      progress_ms: data.body.progress_ms,
-      track_id: track.id,
-      name: track.name,
-      artist: track.artists[0].name,
-      album: track.album.name,
-      duration_ms: track.duration_ms,
-      image_url: track.album.images.length > 0 ? track.album.images[0].url : null,
-    });
-  } catch (error) {
-    console.error('Error getting current track:', error);
-    if (error.statusCode === 401) {
-      return res.status(401).json({ error: 'Token expired' });
-    }
-    if (error.statusCode === 403) {
-      return res.status(403).json({ error: 'Premium required' });
-    }
-    res.status(500).json({ error: 'Failed to fetch current track' });
-  }
+  const { status, body } = await getCurrentTrack(token);
+  if (status === 429) res.set('Retry-After', String(body.retry_after));
+  res.status(status).json(body);
 });
 
 app.get('/api/lyrics/job', (req, res) => {

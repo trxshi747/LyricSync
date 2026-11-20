@@ -6,6 +6,11 @@ import LyricsView from './components/LyricsView';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
+const POLL_INTERVAL_MS = 1500;
+const HIDDEN_POLL_INTERVAL_MS = 5000; // Background tabs don't need fast updates
+const MAX_BACKOFF_MS = 15000;
+const REQUEST_TIMEOUT_MS = 15000;
+
 function App() {
   const [accessToken, setAccessToken] = useState(() => localStorage.getItem('access_token'));
   const [currentTrack, setCurrentTrack] = useState(null);
@@ -14,6 +19,7 @@ function App() {
   const [isLoadingLyrics, setIsLoadingLyrics] = useState(false);
   const [isAiFallback, setIsAiFallback] = useState(false);
   const [authError, setAuthError] = useState(null);
+  const [pollIssue, setPollIssue] = useState(null); // Shown while the current track can't be fetched
   const [showWhitelistModal, setShowWhitelistModal] = useState(true);
 
   // Translation state
@@ -57,17 +63,27 @@ function App() {
     }
   }, []);
 
-  // Poll Spotify Current Track
+  // Poll Spotify Current Track. Requests never overlap (the next one is scheduled when the previous finishes),
+  // and errors slow the polling down instead of hammering a backend or Spotify that is already struggling.
   useEffect(() => {
     if (!accessToken) return;
 
+    let cancelled = false;
+    let timer = null;
+    let failures = 0;
+
+    // Returns how many ms to wait before the next poll
     const fetchCurrentTrack = async () => {
       try {
         const fetchStart = Date.now();
         const res = await axios.get(`${BACKEND_URL}/api/current-track`, {
-          headers: { Authorization: `Bearer ${accessToken}` }
+          headers: { Authorization: `Bearer ${accessToken}` },
+          timeout: REQUEST_TIMEOUT_MS
         });
         const fetchEnd = Date.now();
+        failures = 0;
+        setPollIssue(null);
+        setAuthError(null);
 
         if (res.data && res.data.is_playing) {
           // Mathematically calculate the exact network latency (round-trip divided by 2)
@@ -81,8 +97,11 @@ function App() {
             fetchLyrics(res.data.track_id, res.data.name, res.data.artist, res.data.duration_ms);
           }
         }
+        return document.hidden ? HIDDEN_POLL_INTERVAL_MS : POLL_INTERVAL_MS;
       } catch (error) {
-        if (error.response && error.response.status === 401) {
+        const status = error.response && error.response.status;
+
+        if (status === 401) {
           // Token expired, try to refresh
           const refreshToken = localStorage.getItem('refresh_token');
           if (refreshToken) {
@@ -91,7 +110,7 @@ function App() {
               if (refreshRes.data && refreshRes.data.access_token) {
                 setAccessToken(refreshRes.data.access_token);
                 localStorage.setItem('access_token', refreshRes.data.access_token);
-                return; // Will retry on next interval tick
+                return POLL_INTERVAL_MS; // The new token restarts this effect
               }
             } catch (refreshErr) {
               console.error('Failed to refresh token:', refreshErr);
@@ -105,17 +124,40 @@ function App() {
             setAccessToken(null);
             localStorage.removeItem('access_token');
           }
-        } else if (error.response && error.response.status === 403) {
-          setAuthError("Spotify Premium is required to sync lyrics. Free accounts are blocked by Spotify.");
+          return POLL_INTERVAL_MS;
         }
-        console.error('Error fetching current track:', error);
+
+        if (status === 403) {
+          setAuthError("Spotify Premium is required to sync lyrics. Free accounts are blocked by Spotify.");
+          return POLL_INTERVAL_MS;
+        }
+
+        if (status === 429) {
+          // Spotify asked us to wait: do exactly that
+          const retryAfter = Number(error.response.data?.retry_after) || 5;
+          setPollIssue(`Spotify is limiting requests, retrying in ${retryAfter}s...`);
+          return retryAfter * 1000;
+        }
+
+        // Network error, timeout or server error: back off 3s, 6s, 12s... up to 15s
+        failures += 1;
+        setPollIssue('Connection problem, retrying...');
+        console.error('Error fetching current track:', error.message);
+        return Math.min(POLL_INTERVAL_MS * 2 ** failures, MAX_BACKOFF_MS);
       }
     };
 
-    fetchCurrentTrack();
-    const interval = setInterval(fetchCurrentTrack, 1000);
-    return () => clearInterval(interval);
-  }, [accessToken, currentTrack]);
+    const loop = async () => {
+      const delay = await fetchCurrentTrack();
+      if (!cancelled) timer = setTimeout(loop, delay);
+    };
+    loop();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [accessToken]); // Track changes are detected through trackIdRef, so the loop doesn't restart on every song
 
   // Parse LRC into array
   const parseLRC = (lrcString) => {
@@ -418,7 +460,7 @@ function App() {
               ) : (
                 <div className="track-details">
                   <div className="track-name">Waiting for music...</div>
-                  <div className="track-artist">Play a song on Spotify to see lyrics.</div>
+                  <div className="track-artist">{pollIssue || 'Play a song on Spotify to see lyrics.'}</div>
                 </div>
               )}
             </div>

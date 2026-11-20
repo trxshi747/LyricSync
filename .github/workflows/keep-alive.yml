@@ -1,0 +1,21 @@
+name: Keep backend awake
+
+# Render's free tier puts the backend to sleep after ~15 minutes without traffic, and the first
+# request afterwards takes 30+ seconds. Pinging /health every 10 minutes keeps it warm.
+# GitHub may delay scheduled runs a few minutes at busy times; for a stricter schedule, also add
+# a free external pinger (cron-job.org or UptimeRobot) on the same URL.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping backend health endpoint
+        env:
+          # Override by creating a repository variable named BACKEND_URL (Settings > Variables)
+          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://lyrics-8w62.onrender.com' }}
+        run: curl -fsS --retry 3 --retry-delay 15 --max-time 90 "$BACKEND_URL/health"

@@ -94,6 +94,11 @@ app.post('/auth/refresh', async (req, res) => {
   }
 });
 
+// Lightweight endpoint used by the keep-alive pinger so the free Render instance doesn't go to sleep
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', uptime: Math.round(process.uptime()) });
+});
+
 // --- API Endpoints ---
 
 app.get('/api/current-track', async (req, res) => {

@@ -6,6 +6,11 @@ const path = require('path');
 const axios = require('axios');
 const FormData = require('form-data');
 
+// Audio download limits: a failed search should cost seconds, not minutes
+const DOWNLOAD_ATTEMPT_TIMEOUT_MS = 40000;
+const DOWNLOAD_TOTAL_BUDGET_MS = 100000;
+const STALE_TMP_FILE_MS = 30 * 60 * 1000;
+
 // Helper to convert Whisper verbose_json segments to LRC format
 function verboseJsonToLrc(segments) {
   let lrcContent = '';
@@ -25,15 +30,15 @@ function verboseJsonToLrc(segments) {
 
     // Filter out common Whisper AI hallucinations during silent/instrumental sections
     const badKeywords = [
-      "subtitles", "субтитры", "dimatorzok", "amara.org", "thanks for watching", 
-      "subscribe to", "tanscrit", "transcrit", "transcriber", "sous-titre", 
+      "subtitles", "субтитры", "dimatorzok", "amara.org", "thanks for watching",
+      "subscribe to", "tanscrit", "transcrit", "transcriber", "sous-titre",
       "altyazı", "çizgi film", "ترجمة", "captioned", "provided to youtube",
       "자막" // Korean for subtitle
     ];
-    
+
     let isHallucination = badKeywords.some(keyword => textLower.includes(keyword));
-    
-    if (textLower === "thank you" || textLower === "thank you." || textLower === "thank you..." || 
+
+    if (textLower === "thank you" || textLower === "thank you." || textLower === "thank you..." ||
         textLower === "you" || textLower === "you." || textLower === "music." || textLower === "music") {
       isHallucination = true;
     }
@@ -85,80 +90,93 @@ async function detectLanguage(searchQuery, promptText = null) {
   }
 }
 
-async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = null) {
-  if (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY === 'your_groq_api_key') {
-    console.warn("Groq API key missing or invalid. Cannot transcribe.");
-    return null;
+function isTranscriptionConfigured() {
+  return Boolean(process.env.GROQ_API_KEY) && process.env.GROQ_API_KEY !== 'your_groq_api_key';
+}
+
+// Prepares .tmp and removes leftovers from crashed jobs. Only old files are removed so a
+// download that is running for another track is never deleted.
+function prepareTmpDir() {
+  const tmpDir = path.join(__dirname, '..', '.tmp');
+  if (!fs.existsSync(tmpDir)) {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    return tmpDir;
   }
 
-  try {
-    console.log(`Searching and downloading audio for: ${searchQuery}`);
-
-    // Download Audio with standalone yt-dlp.exe (no conversion needed)
-    // Groq accepts flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm
-    const timestamp = Date.now();
-    const tmpDir = path.join(__dirname, '..', '.tmp');
-    if (!fs.existsSync(tmpDir)) {
-      fs.mkdirSync(tmpDir, { recursive: true });
-    } else {
-      // Cleanup: If there are 5 or more files left over from crashes, delete them to save space
-      const existingFiles = fs.readdirSync(tmpDir);
-      if (existingFiles.length >= 5) {
-        console.log(`Cleaning up ${existingFiles.length} old files in .tmp directory...`);
-        for (const file of existingFiles) {
-          try {
-            fs.unlinkSync(path.join(tmpDir, file));
-          } catch (e) {
-            // Ignore if file is locked
-          }
-        }
+  for (const file of fs.readdirSync(tmpDir)) {
+    const filePath = path.join(tmpDir, file);
+    try {
+      if (Date.now() - fs.statSync(filePath).mtimeMs > STALE_TMP_FILE_MS) {
+        fs.unlinkSync(filePath);
       }
+    } catch (e) {
+      // Ignore if file is locked
     }
+  }
+  return tmpDir;
+}
 
-    const ytdlpPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
-    const outputTemplate = path.join(tmpDir, `audio_${timestamp}.%(ext)s`);
+// Downloads the best matching audio for a track with yt-dlp and returns the local file path.
+// Slow part of the pipeline, so it is separate and can start while lyrics sources are still being queried.
+async function downloadAudio(searchQuery, durationSeconds) {
+  console.log(`Searching and downloading audio for: ${searchQuery}`);
 
-    let actualFilePath = null;
+  // Download Audio with standalone yt-dlp.exe (no conversion needed)
+  // Groq accepts flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm
+  const timestamp = Date.now();
+  const tmpDir = prepareTmpDir();
 
-    // Pass the exact string directly. execFile safely handles all unicode without shell crashes.
-    const searchProviders = [
-      `ytsearch1:${searchQuery} Topic`,
-      `ytsearch1:${searchQuery} audio`,
-      `ytsearch1:${searchQuery} official audio`,
-      `ytsearch1:${searchQuery} lyrics`,
-      `ytsearch2:${searchQuery}`,
-      `scsearch1:${searchQuery}`
-    ];
+  const ytdlpPath = process.platform === 'win32' ? path.join(__dirname, 'yt-dlp.exe') : 'yt-dlp';
+  const outputTemplate = path.join(tmpDir, `audio_${timestamp}.%(ext)s`);
 
-    let matchFilter = 'duration < 600';
-    if (durationSeconds) {
-      // Only accept videos that closely match the Spotify track duration (-15s to +45s margin for MV intros)
-      const minDur = Math.max(0, durationSeconds - 15);
-      const maxDur = durationSeconds + 45;
-      matchFilter = `duration > ${minDur} & duration < ${maxDur}`;
-    }
+  // Pass the exact string directly. execFile safely handles all unicode without shell crashes.
+  // Ordered from most to least reliable; the duration filter below keeps wrong videos out.
+  const searchProviders = [
+    `ytsearch1:${searchQuery} Topic`,
+    `ytsearch1:${searchQuery} official audio`,
+    `ytsearch2:${searchQuery}`,
+    `scsearch1:${searchQuery}`
+  ];
 
-    let extraArgs = [];
-    const localCookiePath = path.join(__dirname, 'youtube_cookies.txt');
-    const renderSecretPath = '/etc/secrets/youtube_cookies.txt';
-    let usableCookiePath = null;
+  let matchFilter = 'duration < 600';
+  if (durationSeconds) {
+    // Only accept videos that closely match the Spotify track duration (-15s to +45s margin for MV intros)
+    const minDur = Math.max(0, durationSeconds - 15);
+    const maxDur = durationSeconds + 45;
+    matchFilter = `duration > ${minDur} & duration < ${maxDur}`;
+  }
 
-    if (fs.existsSync(renderSecretPath)) {
-      usableCookiePath = path.join(tmpDir, 'youtube_cookies.txt');
-      fs.copyFileSync(renderSecretPath, usableCookiePath);
-    } else if (fs.existsSync(localCookiePath)) {
-      usableCookiePath = path.join(tmpDir, 'youtube_cookies.txt');
-      fs.copyFileSync(localCookiePath, usableCookiePath);
-    } else if (process.env.YOUTUBE_COOKIES) {
-      usableCookiePath = path.join(tmpDir, 'youtube_cookies.txt');
-      fs.writeFileSync(usableCookiePath, process.env.YOUTUBE_COOKIES);
-    }
+  let extraArgs = [];
+  const localCookiePath = path.join(__dirname, 'youtube_cookies.txt');
+  const renderSecretPath = '/etc/secrets/youtube_cookies.txt';
+  let usableCookiePath = null;
 
-    if (usableCookiePath) {
-      extraArgs.push('--cookies', usableCookiePath);
-    }
+  if (fs.existsSync(renderSecretPath)) {
+    usableCookiePath = path.join(tmpDir, `youtube_cookies_${timestamp}.txt`);
+    fs.copyFileSync(renderSecretPath, usableCookiePath);
+  } else if (fs.existsSync(localCookiePath)) {
+    usableCookiePath = path.join(tmpDir, `youtube_cookies_${timestamp}.txt`);
+    fs.copyFileSync(localCookiePath, usableCookiePath);
+  } else if (process.env.YOUTUBE_COOKIES) {
+    usableCookiePath = path.join(tmpDir, `youtube_cookies_${timestamp}.txt`);
+    fs.writeFileSync(usableCookiePath, process.env.YOUTUBE_COOKIES);
+  }
 
+  if (usableCookiePath) {
+    extraArgs.push('--cookies', usableCookiePath);
+  }
+
+  const deadline = Date.now() + DOWNLOAD_TOTAL_BUDGET_MS;
+  let actualFilePath = null;
+
+  try {
     for (const provider of searchProviders) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs < 5000) {
+        console.log(`Download time budget used up, giving up before: ${provider}`);
+        break;
+      }
+
       console.log(`Attempting native download via: ${provider} (Target length: ${durationSeconds}s)`);
       try {
         const { stdout, stderr } = await execFilePromise(ytdlpPath, [
@@ -169,7 +187,7 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
           ...extraArgs,
           '-o', outputTemplate,
           provider
-        ], { timeout: 60000 }); // 60 second timeout to prevent infinite hangs
+        ], { timeout: Math.min(DOWNLOAD_ATTEMPT_TIMEOUT_MS, remainingMs) });
         console.log(`yt-dlp stdout:`, stdout);
         if (stderr) console.log(`yt-dlp stderr:`, stderr);
 
@@ -185,13 +203,24 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
         console.log(`Download failed for ${provider}. Trying next...`);
       }
     }
-
-    if (!actualFilePath) {
-      throw new Error("Downloaded audio file not found in .tmp directory. All search providers failed.");
+  } finally {
+    // The cookies copy is only needed while yt-dlp runs
+    if (usableCookiePath) {
+      try { fs.unlinkSync(usableCookiePath); } catch (e) { }
     }
+  }
 
+  if (!actualFilePath) {
+    throw new Error("Downloaded audio file not found in .tmp directory. All search providers failed.");
+  }
+  return actualFilePath;
+}
+
+// Transcribes a downloaded audio file with Whisper and returns the LRC text. Deletes the file when done.
+async function transcribeAudioFile(actualFilePath, searchQuery, promptText = null) {
+  try {
     console.log(`Uploading audio to Groq Whisper API for transcription...`);
-    
+
     // Detect primary language to prevent Whisper from locking onto intro languages or hallucinating
     const detectedLang = await detectLanguage(searchQuery, promptText);
     if (detectedLang) {
@@ -202,14 +231,14 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
     formData.append('file', fs.createReadStream(actualFilePath));
     formData.append('model', 'whisper-large-v3');
     formData.append('response_format', 'verbose_json');
-    
+
     if (detectedLang) {
       formData.append('language', detectedLang);
     }
-    // Whisper accepts up to 244 tokens (~800 characters) as a prompt to guide its vocabulary and alignment. 
+    // Whisper accepts up to 244 tokens (~800 characters) as a prompt to guide its vocabulary and alignment.
     // IMPORTANT: Do NOT use conversational instructions here. We also removed the searchQuery (title/artist) because Whisper was hallucinating it during silent sections!
     let whisperPrompt = promptText ? promptText : "";
-    
+
     if (whisperPrompt) {
       const safePrompt = whisperPrompt.substring(0, 800);
       formData.append('prompt', safePrompt);
@@ -225,19 +254,26 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
       maxContentLength: Infinity
     });
 
-    const jsonData = response.data;
-
-    // Always cleanup the current tmp file if it exists
-    if (actualFilePath && fs.existsSync(actualFilePath)) {
-      try {
-        fs.unlinkSync(actualFilePath);
-      } catch (e) { }
-    }
-
     console.log(`Received verbose_json from Groq, converting to LRC...`);
-    const lrc = verboseJsonToLrc(jsonData.segments);
+    return verboseJsonToLrc(response.data.segments);
+  } finally {
+    // Always cleanup the audio file, even when transcription failed
+    try {
+      if (actualFilePath && fs.existsSync(actualFilePath)) fs.unlinkSync(actualFilePath);
+    } catch (e) { }
+  }
+}
 
-    return lrc;
+// Download + transcribe in one call (kept for scripts and tests). Returns null on any failure.
+async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = null) {
+  if (!isTranscriptionConfigured()) {
+    console.warn("Groq API key missing or invalid. Cannot transcribe.");
+    return null;
+  }
+
+  try {
+    const audioPath = await downloadAudio(searchQuery, durationSeconds);
+    return await transcribeAudioFile(audioPath, searchQuery, promptText);
   } catch (error) {
     console.error('Error in getTranscribedLyrics:', error.response?.data || error);
     return null;
@@ -245,5 +281,8 @@ async function getTranscribedLyrics(searchQuery, durationSeconds, promptText = n
 }
 
 module.exports = {
-  getTranscribedLyrics
+  getTranscribedLyrics,
+  downloadAudio,
+  transcribeAudioFile,
+  isTranscriptionConfigured
 };

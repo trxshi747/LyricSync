@@ -5,7 +5,7 @@ const SpotifyWebApi = require('spotify-web-api-node');
 const axios = require('axios');
 const Genius = require('genius-lyrics');
 const crypto = require('crypto');
-const { getTranscribedLyrics } = require('./transcriber');
+const { downloadAudio, transcribeAudioFile, isTranscriptionConfigured } = require('./transcriber');
 const cache = require('./cache');
 
 const DAY_S = 24 * 60 * 60;
@@ -23,24 +23,73 @@ const geniusClient = new Genius.Client();
 // In-memory store for background AI transcription jobs
 const aiJobs = new Map();
 
-async function runBackgroundAiJob(trackId, trackName, artistName, durationSeconds, geniusLyrics = null) {
-  if (aiJobs.has(trackId)) return; // Already running or completed
+const FAILED_JOB_RETRY_MS = 5 * 60 * 1000; // A failed track can be retried after this delay
+const GENIUS_TIMEOUT_MS = 6000;
+
+// Looks up plain lyrics on Genius. Never rejects: resolves to null when nothing is found, on error or on timeout.
+async function fetchGeniusLyrics(trackName, artistName) {
+  let timer;
+  try {
+    console.log(`Checking Genius: ${trackName} by ${artistName}`);
+    const lookup = (async () => {
+      const searches = await geniusClient.songs.search(`${trackName} ${artistName}`);
+      if (!searches || searches.length === 0) return null;
+      const lyricsText = await searches[0].lyrics();
+      return lyricsText && lyricsText.trim() !== '' ? lyricsText : null;
+    })();
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(() => {
+        console.log(`Genius lookup timed out after ${GENIUS_TIMEOUT_MS}ms for ${trackName}.`);
+        resolve(null);
+      }, GENIUS_TIMEOUT_MS);
+    });
+    return await Promise.race([lookup, timeout]);
+  } catch (error) {
+    console.log(`Genius API failed: ${error.message}`);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// geniusLyricsPromise resolves to the Genius text (or null). The audio download starts immediately and
+// runs in parallel with it, since Genius is only needed later as a guide for Whisper.
+async function runBackgroundAiJob(trackId, trackName, artistName, durationSeconds, geniusLyricsPromise = Promise.resolve(null)) {
+  const existing = aiJobs.get(trackId);
+  if (existing) {
+    const canRetry = existing.status === 'failed' && Date.now() - existing.finishedAt > FAILED_JOB_RETRY_MS;
+    if (!canRetry) return; // Already running, completed, or failed too recently to retry
+  }
+
+  const failJob = (error) => aiJobs.set(trackId, { status: 'failed', error, finishedAt: Date.now() });
+
+  if (!isTranscriptionConfigured()) {
+    console.warn("Groq API key missing or invalid. Cannot transcribe.");
+    return failJob('Groq API key missing');
+  }
 
   aiJobs.set(trackId, { status: 'syncing', lyrics: null });
   console.log(`[Job ${trackId}] Started background AI Transcription for ${trackName}...`);
 
   try {
-    const generatedLrc = await getTranscribedLyrics(`${trackName} ${artistName}`, durationSeconds, geniusLyrics);
+    const searchQuery = `${trackName} ${artistName}`;
+    const audioPromise = downloadAudio(searchQuery, durationSeconds);
+    audioPromise.catch(() => {}); // The error is handled below; this avoids an unhandled rejection while Genius is awaited
+
+    const geniusLyrics = await geniusLyricsPromise;
+    const audioPath = await audioPromise;
+
+    const generatedLrc = await transcribeAudioFile(audioPath, searchQuery, geniusLyrics);
     if (generatedLrc) {
       aiJobs.set(trackId, { status: 'completed', lyrics: generatedLrc });
       await cache.set(lyricsCacheKey(trackId), generatedLrc, AI_LYRICS_CACHE_TTL_S);
       console.log(`[Job ${trackId}] Successfully completed.`);
     } else {
-      aiJobs.set(trackId, { status: 'failed', error: 'Empty output' });
+      failJob('Empty output');
     }
   } catch (error) {
     console.error(`[Job ${trackId}] Failed: ${error.message}`);
-    aiJobs.set(trackId, { status: 'failed', error: error.message });
+    failJob(error.message);
   }
 }
 
@@ -305,33 +354,22 @@ app.get('/api/lyrics', async (req, res) => {
     }
   }
 
-  // 2. Try Genius API (Plain Lyrics)
-  try {
-    console.log(`Checking Genius: ${track_name} by ${artist_name}`);
-    const searches = await geniusClient.songs.search(`${track_name} ${artist_name}`);
+  // 2. No synced lyrics: start the Genius lookup (plain text) and the AI job together.
+  // The job begins downloading audio right away and uses the Genius text later as a guide for Whisper.
+  const geniusPromise = fetchGeniusLyrics(track_name, artist_name);
+  runBackgroundAiJob(track_id, track_name, artist_name, durationSeconds, geniusPromise);
 
-    if (searches && searches.length > 0) {
-      const bestMatch = searches[0];
-      const lyricsText = await bestMatch.lyrics();
-
-      if (lyricsText && lyricsText.trim() !== '') {
-        console.log(`Found plain lyrics on Genius for ${track_name}. Starting background sync with prompt assistance...`);
-        runBackgroundAiJob(track_id, track_name, artist_name, durationSeconds, lyricsText);
-        return res.json({
-          source: 'genius',
-          lyrics: lyricsText,
-          jobId: track_id
-        });
-      }
-    }
-    console.log(`No lyrics found on Genius for ${track_name}. Starting background sync...`);
-  } catch (error) {
-    console.log(`Genius API failed: ${error.message}. Starting background sync...`);
+  const lyricsText = await geniusPromise;
+  if (lyricsText) {
+    console.log(`Found plain lyrics on Genius for ${track_name}. AI sync is running in the background.`);
+    return res.json({
+      source: 'genius',
+      lyrics: lyricsText,
+      jobId: track_id
+    });
   }
 
-  // 3. AI Fallback: Triggered in background because both LRCLIB and Genius didn't provide synced lyrics
-  runBackgroundAiJob(track_id, track_name, artist_name, durationSeconds);
-
+  console.log(`No lyrics found on Genius for ${track_name}. AI sync is running in the background.`);
   return res.json({
     source: 'processing',
     jobId: track_id

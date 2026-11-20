@@ -4,7 +4,15 @@ const dotenv = require('dotenv');
 const SpotifyWebApi = require('spotify-web-api-node');
 const axios = require('axios');
 const Genius = require('genius-lyrics');
+const crypto = require('crypto');
 const { getTranscribedLyrics } = require('./transcriber');
+const cache = require('./cache');
+
+const DAY_S = 24 * 60 * 60;
+const LRCLIB_CACHE_TTL_S = 14 * DAY_S;
+const AI_LYRICS_CACHE_TTL_S = 90 * DAY_S; // AI transcription is slow and costly, keep it long
+const TRANSLATION_CACHE_TTL_S = 90 * DAY_S;
+const lyricsCacheKey = (trackId) => `lyrics:v1:${trackId}`;
 
 dotenv.config({ path: '../.env' }); // Load from parent directory
 
@@ -25,6 +33,7 @@ async function runBackgroundAiJob(trackId, trackName, artistName, durationSecond
     const generatedLrc = await getTranscribedLyrics(`${trackName} ${artistName}`, durationSeconds, geniusLyrics);
     if (generatedLrc) {
       aiJobs.set(trackId, { status: 'completed', lyrics: generatedLrc });
+      await cache.set(lyricsCacheKey(trackId), generatedLrc, AI_LYRICS_CACHE_TTL_S);
       console.log(`[Job ${trackId}] Successfully completed.`);
     } else {
       aiJobs.set(trackId, { status: 'failed', error: 'Empty output' });
@@ -187,6 +196,16 @@ app.post('/api/translate', async (req, res) => {
     return res.status(400).json({ error: `Unsupported targetLang. Use one of: ${Object.keys(TRANSLATION_LANGUAGES).join(', ')}` });
   }
 
+  // Same lines and language always give the same translation, so cache by content hash
+  const translationKey = `translation:v1:${targetLang}:${crypto
+    .createHash('sha1')
+    .update(JSON.stringify(lyricsArray.map((l) => l.text)))
+    .digest('hex')}`;
+  const cachedTranslation = await cache.get(translationKey);
+  if (cachedTranslation) {
+    return res.json({ translatedLyrics: cachedTranslation, targetLang, cached: true });
+  }
+
   try {
     // Send blank rows for empty/instrumental lines so the model sees the stanza structure without translating them
     const textLines = lyricsArray
@@ -222,17 +241,23 @@ app.post('/api/translate', async (req, res) => {
 
     // Parse the translated lines back into the array
     const translatedArray = [...lyricsArray];
+    const isSentLine = (line) => line && line.text && line.text.trim() && line.text !== '[INSTRUMENTAL]';
+    const translatedIndexes = new Set();
 
     for (const item of translations) {
       const index = parseInt(item.id);
       const translatedText = item.text;
       const original = translatedArray[index];
       // Only accept text for lines we actually sent; blank and instrumental lines stay untouched
-      const wasSent = original && original.text && original.text.trim() && original.text !== '[INSTRUMENTAL]';
-      if (!isNaN(index) && wasSent && typeof translatedText === 'string' && translatedText.trim()) {
+      if (!isNaN(index) && isSentLine(original) && typeof translatedText === 'string' && translatedText.trim()) {
         translatedArray[index] = { ...original, text: translatedText.trim() };
+        translatedIndexes.add(index);
       }
     }
+
+    // Only cache complete translations: a partial result should be retried next time
+    const isComplete = lyricsArray.every((line, i) => !isSentLine(line) || translatedIndexes.has(i));
+    if (isComplete) cache.set(translationKey, translatedArray, TRANSLATION_CACHE_TTL_S);
 
     res.json({ translatedLyrics: translatedArray, targetLang });
   } catch (error) {
@@ -250,6 +275,13 @@ app.get('/api/lyrics', async (req, res) => {
 
   const durationSeconds = Math.round(parseInt(duration_ms) / 1000);
 
+  // 0. Already resolved before (LRCLIB or a finished AI transcription): answer instantly
+  const cachedLyrics = await cache.get(lyricsCacheKey(track_id));
+  if (cachedLyrics) {
+    console.log(`Cache hit for ${track_name}.`);
+    return res.json({ source: 'lrclib', lyrics: cachedLyrics, cached: true });
+  }
+
   // 1. Try LRCLIB API first
   try {
     const lrclibUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(track_name)}&artist_name=${encodeURIComponent(artist_name)}&duration=${durationSeconds}`;
@@ -259,6 +291,7 @@ app.get('/api/lyrics', async (req, res) => {
 
     if (lrcRes.data && lrcRes.data.syncedLyrics) {
       console.log(`Found synced lyrics for ${track_name} on LRCLIB.`);
+      cache.set(lyricsCacheKey(track_id), lrcRes.data.syncedLyrics, LRCLIB_CACHE_TTL_S);
       return res.json({
         source: 'lrclib',
         lyrics: lrcRes.data.syncedLyrics
